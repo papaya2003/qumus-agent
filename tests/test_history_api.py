@@ -7,6 +7,7 @@ earlier ones and /api/history/{id}/recording plays one in the page."""
 import asyncio
 import json
 
+from conftest import v2_recording
 from fastapi.testclient import TestClient
 
 from qumus2.app import build_services
@@ -145,10 +146,8 @@ def test_lab_time_skips_jumps_between_clocks():
 
 def test_review_after_recovered_job_keeps_the_failed_job_evidence():
     """An explicit human review is the current state, not a clean success."""
-    from pathlib import Path
 
-    data = json.loads((Path(__file__).parents[1] / "recordings" /
-                       "openai-collaboration-20261025" / "recording.json").read_text())
+    data = json.loads((v2_recording("openai-collaboration-20261025") / "recording.json").read_text())
     summary = summarize_events(data["events"])
     assert summary["outcome"] == "awaiting review"
     assert summary["jobs"] == 7 and summary["flakes"] == 5

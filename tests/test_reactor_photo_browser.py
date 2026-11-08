@@ -2,12 +2,12 @@
 
 import hashlib
 import json
-from pathlib import Path
 from urllib.parse import urljoin
 
 import pytest
 
 pytest.importorskip("playwright.sync_api")
+from conftest import v2_recording
 from playwright.sync_api import expect  # noqa: E402
 from test_ui_browser import _page, _Server  # noqa: E402
 from test_ui_browser import browser as shared_browser  # noqa: E402
@@ -15,7 +15,7 @@ from test_ui_browser import browser as shared_browser  # noqa: E402
 from qumus2.ui.replay import create_replay_app  # noqa: E402
 
 browser = shared_browser
-RECORDING = Path(__file__).resolve().parents[1] / "recordings/openai-integrated-reactor-20261027-v5"
+RECORDING_NAME = "openai-integrated-reactor-20261027-v5"
 
 
 def _end(page, url):
@@ -26,7 +26,7 @@ def _end(page, url):
 
 
 def test_reactor_final_record_action_has_no_device_placeholder(browser):
-    with _Server(create_replay_app(RECORDING)) as url:
+    with _Server(create_replay_app(v2_recording(RECORDING_NAME))) as url:
         ctx, page, errors = _page(browser)
         try:
             _end(page, url)
@@ -49,12 +49,12 @@ def test_reactor_final_record_action_has_no_device_placeholder(browser):
 
 @pytest.mark.parametrize("width", [1440, 1024])
 def test_product_switches_between_original_saved_observations(browser, tmp_path, width):
-    data = json.loads((RECORDING / "recording.json").read_text())
+    data = json.loads((v2_recording(RECORDING_NAME) / "recording.json").read_text())
     product = next(e["payload"] for e in reversed(data["events"])
                    if e["kind"] == "sample.updated" and e["payload"].get("status") == "reactor_product")
     images = product["props"]["images"]
     assert {"reactor", "ordinary_microscope"} <= images.keys()
-    with _Server(create_replay_app(RECORDING)) as url:
+    with _Server(create_replay_app(v2_recording(RECORDING_NAME))) as url:
         ctx, page, errors = _page(browser, width=width)
         try:
             _end(page, url)
@@ -73,7 +73,7 @@ def test_product_switches_between_original_saved_observations(browser, tmp_path,
                 response = page.request.get(urljoin(url, source))
                 assert response.ok
                 assert hashlib.sha256(response.body()).digest() == hashlib.sha256(
-                    (RECORDING / images[key]).read_bytes()).digest()
+                    (v2_recording(RECORDING_NAME) / images[key]).read_bytes()).digest()
                 return source
 
             # The reactor acceptance image remains the initial view.

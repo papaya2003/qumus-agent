@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+from conftest import v2_recording
 
 from qumus2.app import build_services
 from qumus2.config import simulation_profile
@@ -439,9 +440,9 @@ def test_restored_unknown_plan_argument_does_not_invalidate_successful_physical_
 
 @pytest.mark.parametrize("call_id", [11677, 11682])
 def test_v5_confirmed_flake_binding_refines_null_placeholders_without_execution(lab, call_id):
-    recording = json.loads((Path(__file__).parents[1] /
-        "recordings/openai-material-metal-default-20261028-v5/recording.json").read_text())
-    events = recording["events"]
+    data = json.loads((v2_recording("openai-material-metal-default-20261028-v5")
+                       / "recording.json").read_text())
+    events = data["events"]
     old = next(e["payload"]["plan"] for e in reversed(events)
                if e["id"] < call_id and e["kind"] in ("plan.updated", "plan.step"))
     s = lab

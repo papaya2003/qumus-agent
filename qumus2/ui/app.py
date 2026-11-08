@@ -368,6 +368,26 @@ def create_app(services: Services, *, start_driver: bool = True,
     def laboratory() -> dict[str, Any]:
         return laboratory_capabilities(s)
 
+    @app.get("/api/windows")
+    def windows() -> dict[str, Any]:
+        """Lab module windows (contract v1) the agent is connected to, with each
+        window's own state summary; empty for the in-process testbench."""
+        clients = getattr(s.jobs, "clients", None)
+        if not clients:
+            return {"mode": "in-process", "windows": []}
+        out = []
+        for module, client in clients.items():
+            row: dict[str, Any] = {"module": module, "url": client.base_url}
+            try:
+                st = client.state()
+                row.update(reachable=True, demo=st.demo, busy=st.busy, locked=st.locked,
+                           fault=st.fault, lease=st.raw.get("lease"),
+                           last_command=st.raw.get("last_command"), jobs=st.raw.get("jobs", []))
+            except Exception as exc:  # noqa: BLE001 - one dead window never hides the others
+                row.update(reachable=False, error=str(exc))
+            out.append(row)
+        return {"mode": "contract", "windows": out}
+
     @app.post("/api/laboratory/mode")
     def choose_laboratory(choice: LaboratoryModeIn) -> dict[str, Any]:
         turn = s.driver._turn

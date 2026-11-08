@@ -284,6 +284,13 @@ def test_agent_tool_reaches_the_sim_lab_only_through_the_contract():
         assert [(e["fields"]["action"], e["fields"]["client"]) for e in accepted] == [
             ("place_chip_on_transfer_stage", "qumus-agent")]
         assert stacking.state()["lease"]["holder"] == "qumus-agent"
+        from qumus2.ui.app import create_app as create_ui_app
+
+        win = TestClient(create_ui_app(s)).get("/api/windows").json()
+        assert win["mode"] == "contract"
+        assert {w["module"]: (w["reachable"], w["demo"], (w["lease"] or {}).get("holder"))
+                for w in win["windows"]} == {"exfoliation": (True, True, None),  # not used yet
+                                             "stacking": (True, True, "qumus-agent")}
         s.jobs.stop_all()
         for mod in s.simlab.modules.values():
             assert "stop confirmed" in messages(mod.service)

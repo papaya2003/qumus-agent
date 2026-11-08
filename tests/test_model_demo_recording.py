@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from conftest import v2_recording
 
 from qumus2.agents.openai_budget import nominal_rates
 from scripts.record_model_demos import (
@@ -1107,12 +1108,11 @@ def test_executable_release_harness_mutation_changes_identity(tmp_path, monkeypa
 
 
 def test_existing_accepted_exports_are_read_only_evidence_not_new_acceptance():
-    root = Path(__file__).resolve().parents[1]
     expected = {"astra-complete-recovery-20261029": ("complete", 92, 91, 1),
                 "astra-honest-stop-20261029": ("honest_stop", 37, 37, 0),
                 "astra-collaborative-refinement-20261029": ("collaboration", 84, 82, 2)}
     for name, (story, requests, usage, failures) in expected.items():
-        p = root / "recordings" / name / "recording.json"
+        p = v2_recording(name) / "recording.json"
         raw = p.read_bytes()
         d = json.loads(raw)
         score = score_export(d, story, model="openai/gpt-6-astra",

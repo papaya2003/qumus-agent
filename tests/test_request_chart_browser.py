@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("playwright.sync_api")
+from conftest import v2_recording
 from playwright.sync_api import expect  # noqa: E402
 from test_ui_browser import _page, _Server  # noqa: E402
 from test_ui_browser import browser as shared_browser  # noqa: E402
@@ -30,7 +31,7 @@ def test_context_cache_metrics_match_backend_and_render(browser):
     events.extend([events[0], events[1]])  # mirrored events are not extra requests/hits
     variants = [events[:1], events[:2], events, events + [{**events[1], 'payload': {
         **events[1]['payload'], 'cached_input_tokens': 1}}]]
-    with _Server(create_replay_app(Path('recordings/openai-collaboration-20261025'))) as url:
+    with _Server(create_replay_app(v2_recording('openai-collaboration-20261025'))) as url:
         ctx, page, errors = _page(browser)
         try:
             page.goto(url)
@@ -81,7 +82,7 @@ def test_settings_waits_for_server_mode_before_loading(browser, tmp_path, monkey
         services.driver.runtime = services.runtime
         app = create_app(services, start_driver=False)
     else:
-        app = create_replay_app(Path('recordings/openai-collaboration-20261025'))
+        app = create_replay_app(v2_recording('openai-collaboration-20261025'))
     with _Server(app) as url:
         ctx, page, errors = _page(browser)
         page.add_init_script("localStorage.setItem('qumus.shell', JSON.stringify({scene: 'settings', side: true}));")
@@ -121,7 +122,7 @@ def test_settings_waits_for_server_mode_before_loading(browser, tmp_path, monkey
 
 
 def test_context_is_only_in_history_and_shows_complete_recording(browser):
-    folder = Path("recordings/openai-collaboration-20261027-v3")
+    folder = v2_recording("openai-collaboration-20261027-v3")
     data = json.loads((folder / "recording.json").read_text())
     counts = [e["payload"]["input_tokens"] for e in data["events"] if e["kind"] == "agent.usage"]
     with _Server(create_replay_app(folder)) as url:
@@ -170,7 +171,7 @@ def test_token_chart_switch_boundaries_unknowns_and_over_limit(browser, tmp_path
     import shutil
 
     folder = tmp_path / 'tokens'
-    shutil.copytree(Path('recordings/openai-collaboration-20261025'), folder)
+    shutil.copytree(v2_recording('openai-collaboration-20261025'), folder)
     path = folder / 'recording.json'
     data = json.loads(path.read_text())
     # This fixture is synthetic evidence, kept only in pytest's private directory.
@@ -359,7 +360,7 @@ def test_actual_scale_agent_lanes_filter_and_request_inspector(browser, tmp_path
     from test_ui_browser import _to_the_end
 
     folder = tmp_path / 'multi-agent-tokens'
-    shutil.copytree(Path('recordings/openai-collaboration-20261025'), folder)
+    shutil.copytree(v2_recording('openai-collaboration-20261025'), folder)
     path = folder / 'recording.json'
     data = json.loads(path.read_text())
     data['events'] = []

@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import drive_recording_fixture, run_fixture_coroutine
+from conftest import drive_recording_fixture, run_fixture_coroutine, v2_recording
 
 pw = pytest.importorskip("playwright.sync_api")
 
@@ -587,7 +587,7 @@ def test_replay_of_a_preserved_claude_run_without_sdk(browser):
     """Historical recordings still render after the execution SDK is removed."""
     from qumus2.ui.recording import load_recording
 
-    rec_dir = Path(__file__).resolve().parents[1] / "recordings/archive/v2-baseline-seed1"
+    rec_dir = v2_recording("archive/v2-baseline-seed1")
     rec = load_recording(rec_dir)
     assert rec["meta"]["agents"] == "sdk"
     assert any(e["kind"] == "agent.turn_end" for e in rec["events"])
@@ -1461,7 +1461,7 @@ def test_demo_contains_its_own_experience_and_single_tool_markers(browser, devic
 
 def test_restored_history_waits_for_server_mode(browser):
     """A restored History scene must not guess that a replay server is live."""
-    folder = Path(__file__).parents[1] / "recordings" / "openai-device-approval-20261025"
+    folder = v2_recording("openai-device-approval-20261025")
     app = create_replay_app(folder)
 
     @app.middleware("http")
@@ -1485,7 +1485,7 @@ def test_restored_history_waits_for_server_mode(browser):
 
 def test_openai_history_review_navigation_and_reports(browser):
     """Review shipped events, with no model requests or laboratory jobs."""
-    folder = Path(__file__).parents[1] / "recordings" / "openai-device-approval-20261025"
+    folder = v2_recording("openai-device-approval-20261025")
     with _Server(create_replay_app(folder)) as url:
         ctx, page, errors = _page(browser)
         page.goto(url)
@@ -1591,7 +1591,7 @@ def test_results_singleton_categories_keep_three_columns(browser, device_recordi
 
 def test_review_lab_status_folders_and_independent_tool_rows(browser, tmp_path):
     """Owner review: categories stay left, siblings middle, details right."""
-    folder = Path(__file__).parents[1] / "recordings" / "openai-device-approval-20261025"
+    folder = v2_recording("openai-device-approval-20261025")
     with _Server(create_replay_app(folder)) as url:
         ctx, page, errors = _page(browser)
         page.goto(url + '?at=80')
@@ -1631,7 +1631,7 @@ def test_review_lab_status_folders_and_independent_tool_rows(browser, tmp_path):
 
 
 def test_review_inspection_preview_matches_overview_and_is_frozen(browser):
-    folder = Path(__file__).parents[1] / "recordings" / "openai-device-approval-20261025"
+    folder = v2_recording("openai-device-approval-20261025")
     with _Server(create_replay_app(folder)) as url:
         ctx, page, errors = _page(browser)
         page.goto(url + '?at=80')
@@ -1656,7 +1656,7 @@ def test_review_inspection_preview_matches_overview_and_is_frozen(browser):
 
 @pytest.mark.parametrize("scenario", ["normal", "camera-loss"])
 def test_integrated_pair_recording_shows_real_product_or_human_boundary(browser, scenario):
-    path = Path(__file__).resolve().parents[1] / "recordings" / f"experimental-reactor-pair-{scenario}-20261027-v3"
+    path = v2_recording(f"experimental-reactor-pair-{scenario}-20261027-v3")
     with _Server(create_replay_app(path)) as url:
         ctx, page, errors = _page(browser)
         page.goto(url)

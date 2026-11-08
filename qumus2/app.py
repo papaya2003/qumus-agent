@@ -52,6 +52,9 @@ class Services:
     # the last event before this session (one serve) wrote anything: the UI's
     # "this run" is everything after it, earlier sessions are its History
     session_start: int = 0
+    # simlab.server.SimLabServer when the agent reaches the sim lab through the
+    # contract (build_services(contract_lab=True)); `jobs` is then its client
+    simlab: Any = None
     _local_close_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
     async def close_local(self, timeout_s: float = 30.0) -> dict[str, Any]:
@@ -72,23 +75,33 @@ class Services:
         finally:
             self._local_close_lock.release()
 
+    @property
+    def local_jobs(self) -> ThreadJobService:
+        """The in-process job service (inside the sim lab in contract mode)."""
+        return self.simlab.side.jobs if self.simlab is not None else self.jobs
+
     def _pending_local_close(self) -> dict[str, Any]:
-        stop = self.jobs._shutdown_stop
+        jobs = self.local_jobs
+        stop = jobs._shutdown_stop
         return {"version": 1, "closed": False, "safe_to_close_resources": False,
-                "manual_execution": not self.jobs._threads, "admission_stopped": self.jobs._closing,
-                "unsettled_jobs": sorted(rid for rid, done in list(self.jobs._done.items()) if not done.is_set()),
-                "alive_workers": [t.name for t in self.jobs._threads + self.jobs._retired_threads if t.is_alive()],
-                "stop_pending": stop is not None and stop.is_alive(), "stop_error": self.jobs._shutdown_stop_error,
-                "unconfirmed_energy_jobs": list(self.jobs._shutdown_unconfirmed_energy), "evidence_pending": True}
+                "manual_execution": not jobs._threads, "admission_stopped": jobs._closing,
+                "unsettled_jobs": sorted(rid for rid, done in list(jobs._done.items()) if not done.is_set()),
+                "alive_workers": [t.name for t in jobs._threads + jobs._retired_threads if t.is_alive()],
+                "stop_pending": stop is not None and stop.is_alive(), "stop_error": jobs._shutdown_stop_error,
+                "unconfirmed_energy_jobs": list(jobs._shutdown_unconfirmed_energy), "evidence_pending": True}
 
     async def _close_local_owned(self, timeout_s: float) -> dict[str, Any]:
         if getattr(self, "_local_resources_closed", False):
             return self._local_shutdown_report
-        self.jobs._shutdown_owner = self
+        if self.simlab is not None:  # agent side first: lease released, servers down
+            self.jobs.close()
+            self.simlab.close()
+        jobs = self.local_jobs
+        jobs._shutdown_owner = self
         deadline = time.monotonic() + timeout_s
         try:
             report = await asyncio.wait_for(asyncio.to_thread(
-                lambda: self.jobs.shutdown(max(0., deadline-time.monotonic()))),
+                lambda: jobs.shutdown(max(0., deadline-time.monotonic()))),
                 max(0., deadline-time.monotonic()))
         except TimeoutError:
             report = {**self._pending_local_close(), "shutdown_pending": True}
@@ -114,7 +127,7 @@ class Services:
             if isinstance(owner, TemporaryDirectory):
                 owner.cleanup()
         self._local_resources_closed = True
-        self.jobs._shutdown_owner = None
+        jobs._shutdown_owner = None
         return report
 
 
@@ -223,7 +236,9 @@ def build_services(db_path: str | Path = ":memory:", *,
                    use_openai: bool = False,
                    pre_send_admission: Any = None, http_max_retries: int = 2,
                    openai_credentials: OpenAICredentials | None = None,
-                   state_path: str | Path | None = None) -> Services:
+                   state_path: str | Path | None = None,
+                   contract_lab: bool = False,
+                   simlab_ports: dict[str, int] | None = None) -> Services:
     """`lab_process=True` runs the lab side (devices, safety, jobs) as a separate
     process under a supervisor (spec 5.4); needs a file database. The returned
     `lab` and `jobs` are then proxies with the same methods.
@@ -233,7 +248,11 @@ def build_services(db_path: str | Path = ":memory:", *,
 
     `scenario`: a scripted scenario name, path or already loaded dict.
     `state_path`: a saved sim world to resume (testbench/checkpoint.py), with
-    the run store it was saved with at `db_path` (in-process lab only)."""
+    the run store it was saved with at `db_path` (in-process lab only).
+
+    `contract_lab=True`: the simulated lab is served as contract v1 module
+    services on loopback (qumus2/simlab, ports `simlab_ports`, default
+    8781/8782, 0 = any free port) and the agent reaches it only through them."""
     # Fail before creating a fresh bench or starting its supervisor.
     oa_creds = openai_credentials if openai_credentials is not None else (
         load_openai_credentials() if use_openai else None)
@@ -241,6 +260,9 @@ def build_services(db_path: str | Path = ":memory:", *,
         raise RuntimeError("OpenAI requested: set QUMUS_OPENAI_API_KEY and QUMUS_OPENAI_MODEL in .env")
     supervisor = None
     session_start = _last_event_id(db_path)  # before the bench seeds the ledger
+    simlab = None
+    if lab_process and contract_lab:
+        raise ValueError("choose either the lab process or the contract sim lab")
     if lab_process and state_path is not None:
         raise ValueError("state_path resumes the in-process testbench; the lab process keeps its own")
     if lab_process:
@@ -269,6 +291,16 @@ def build_services(db_path: str | Path = ":memory:", *,
                 f"{len(closed)} job(s) left open by the last run were closed "
                 f"({', '.join(closed)}): this testbench restarts with a fresh bench, so they "
                 "cannot continue. Use serve --lab-process to keep the bench across restarts.")})
+        if contract_lab:
+            from qumus2.simlab.agent_link import connect
+            from qumus2.simlab.server import SimLabServer
+
+            simlab = SimLabServer(side, ports=simlab_ports).start()
+            try:
+                jobs = connect(simlab.urls, store)
+            except Exception:
+                simlab.close()
+                raise
     projects = store.list_projects()
     project_id = projects[0]["id"] if projects else store.create_project("demo")
     gateway = ToolGateway(default_registry(), store, jobs, project_id=project_id, bench=lab.bench)
@@ -287,7 +319,7 @@ def build_services(db_path: str | Path = ":memory:", *,
     driver = ConversationDriver(store, runtime, jobs)
     store.begin_session(session_start)
     return Services(store, clock, lab, gate, jobs, gateway, runtime, driver, project_id,
-                    supervisor, session_start)
+                    supervisor, session_start, simlab)
 
 
 def _last_event_id(db_path: str | Path) -> int:

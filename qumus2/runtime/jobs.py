@@ -1157,6 +1157,13 @@ class ThreadJobService:
         if ev:
             ev.set()
 
+    def pause(self, run_id: str) -> None:
+        """Stop one job at its next safe point like Stop does (resumable with
+        Continue). Used by one sim-lab module's /api/stop (qumus2/simlab)."""
+        ev = self._cancel.get(run_id)
+        if ev:
+            ev.set()
+
     def stop_all(self) -> None:
         """Every job pauses at its next safe point (see the module doc). Heaters
         no job holds are switched off now."""

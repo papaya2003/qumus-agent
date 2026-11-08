@@ -1,10 +1,10 @@
 """Navigation chosen while the page boots must survive initialization."""
 from fnmatch import fnmatch
-from pathlib import Path
 
 import pytest
 
 pytest.importorskip('playwright.sync_api')
+from conftest import v2_recording
 from playwright.sync_api import expect  # noqa: E402
 from test_ui_browser import _page, _Server  # noqa: E402
 from test_ui_browser import browser as shared_browser  # noqa: E402
@@ -111,7 +111,7 @@ def test_latest_early_choice_opens_even_when_already_saved(browser, offline_live
 
 
 def test_explicit_replay_start_retains_its_progress_route(browser):
-    with _Server(create_replay_app(Path('recordings/openai-collaboration-20261025'))) as url:
+    with _Server(create_replay_app(v2_recording('openai-collaboration-20261025'))) as url:
         ctx, page, errors = _page(browser)
         page.add_init_script("localStorage.setItem('qumus.shell', JSON.stringify({scene: 'settings', side: true}));")
         try:

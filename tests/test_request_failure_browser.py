@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("playwright.sync_api")
+from conftest import v2_recording
 from playwright.sync_api import expect  # noqa: E402
 from test_ui_browser import _page, _Server, _to_the_end  # noqa: E402
 from test_ui_browser import browser as shared_browser  # noqa: E402
@@ -18,7 +19,7 @@ browser = shared_browser
 
 def test_failed_attempt_retry_recovery_and_unknown_reason(browser, tmp_path):
     folder = tmp_path / "requests"
-    shutil.copytree(Path("recordings/openai-collaboration-20261025"), folder)
+    shutil.copytree(v2_recording("openai-collaboration-20261025"), folder)
     path = folder / "recording.json"
     data = json.loads(path.read_text())
     data["events"] = []

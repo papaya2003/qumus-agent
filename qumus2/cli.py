@@ -73,10 +73,14 @@ def _serve(args: argparse.Namespace) -> None:
     services = build_services(args.db, scenario=args.scenario,
                               use_openai=args.openai and not args.mock,
                               run_budget_usd=args.budget, step_delay_s=0.6,
-                              lab_process=args.lab_process, testbench_config=testbench_config)
+                              lab_process=args.lab_process, testbench_config=testbench_config,
+                              contract_lab=args.contract_lab)
     # bench state + real times next to the run store, for `qumus2 export` / replays
     recorder = attach_recorder(services)
     lab = f", lab process pid {services.supervisor.pid}" if services.supervisor else ""
+    if services.simlab is not None:
+        lab = ", sim lab via contract v1: " + ", ".join(
+            f"{m} {u}" for m, u in services.simlab.urls.items())
     url = f"http://{args.host}:{args.port}"
     print(f"Qumus v2 ({services.runtime.mode} agents{lab}) on {url}")
     print("Ctrl+C to stop." + (" Model requests spend API credit only while processing a message."
@@ -93,6 +97,9 @@ def _serve(args: argparse.Namespace) -> None:
             recorder.stop()
         if services.supervisor:
             services.supervisor.stop()
+        if services.simlab is not None:
+            services.jobs.close()
+            services.simlab.close()
 
 
 def _export(args: argparse.Namespace) -> None:
@@ -111,6 +118,12 @@ def _lab(args: argparse.Namespace) -> None:
     from qumus2.runtime.labproc import main
 
     main(args)
+
+
+def _simlab(args: argparse.Namespace) -> None:
+    from qumus2.simlab.server import main as simlab_main
+
+    simlab_main(args)
 
 
 def _demo(args: argparse.Namespace) -> None:
@@ -211,6 +224,9 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--target-approval-sha256", help="optional expected owner-instruction hash")
     sp.add_argument("--lab-process", action="store_true",
                     help="run devices, safety and jobs in a separate supervised process")
+    sp.add_argument("--contract-lab", action="store_true",
+                    help="agents reach the simulated lab only through contract v1 module "
+                    "services (exfoliation :8781, stacking :8782)")
     sp.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
     sp.set_defaults(fn=_serve)
     lp = sub.add_parser("lab", help="the lab process (started by serve --lab-process)")
@@ -219,6 +235,16 @@ def main(argv: list[str] | None = None) -> None:
     lp.add_argument("--image-dir", default=None)
     lp.add_argument("--heartbeat", type=float, default=0.5, help="heartbeat interval (s)")
     lp.set_defaults(fn=_lab)
+    sl = sub.add_parser("simlab", help="the simulated lab as contract v1 services "
+                        "(exfoliation :8781, stacking :8782; no agents, no model calls)")
+    sl.add_argument("--db", default="runs/checks/simlab/qumus.db")
+    sl.add_argument("--seed", type=int, default=None)
+    sl.add_argument("--host", default="127.0.0.1", help="keep loopback (contract rule)")
+    sl.add_argument("--exfoliation-port", type=int, default=8781)
+    sl.add_argument("--stacking-port", type=int, default=8782)
+    sl.add_argument("--motion-delay", type=float, default=0.3,
+                    help="wall seconds per motion segment, so Stop can be tried by hand")
+    sl.set_defaults(fn=_simlab)
     ep = sub.add_parser("export", help="turn a run store into a recording (watch it in History)")
     ep.add_argument("--db", default="runs/checks/manual/qumus.db")
     ep.add_argument("--out", required=True, help="output folder, e.g. recordings/my-run")

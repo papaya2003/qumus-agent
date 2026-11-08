@@ -2,7 +2,7 @@
 
 This document preserves the version 1 source sequence and earlier diagnostic
 contracts. The restarted Hall-bar delivery follows the current contracts in
-[architecture](architecture.md) and the ordered acceptance gates in
+[simulation contracts](sim-contracts.md) and the ordered acceptance gates in
 [workstreams](workstreams.md). Earlier ideal-baseline or campaign instructions
 below do not authorize the restarted delivery or establish its acceptance.
 Continuous dual-plane tracking and descent-time XY correction are not required

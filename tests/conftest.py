@@ -2,14 +2,33 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from qumus2.app import Services, build_services
 from qumus2.config import load_yaml
+
+RECORDINGS_ENV = "QUMUS_RECORDINGS_DIR"
+
+
+def v2_recording(name: str) -> Path:
+    """A qumus-v2 demo recording used as a test fixture.
+
+    The agent repository did not copy qumus-v2's 305 MB of recordings. A test
+    that needs one finds it here (recordings/<name>) or under the folder named
+    by QUMUS_RECORDINGS_DIR (a qumus-v2 checkout's recordings/), else skips."""
+    local = Path(__file__).resolve().parents[1] / "recordings" / name
+    if local.exists():
+        return local
+    other = os.environ.get(RECORDINGS_ENV)
+    if other and (Path(other) / name).exists():
+        return Path(other) / name
+    pytest.skip(f"recording {name} is kept in qumus-v2; set {RECORDINGS_ENV} to its recordings/")
 
 
 def display_matches(display: bytes, capture: bytes) -> bool:

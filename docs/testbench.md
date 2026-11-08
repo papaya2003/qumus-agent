@@ -8,7 +8,7 @@ modelled, which faults can be injected, and what the tests and benchmarks
 measure.
 
 Current contracts and the owner's apparatus clarification are in
-[architecture.md](architecture.md). Earlier implementation decisions are in
+[sim-contracts.md](sim-contracts.md). Earlier implementation decisions are in
 the [dated archive](archive/architecture-decisions-through-2026-10-25.md).
 This guide describes the mainline implementation. Acceptance of the current
 iteration is tracked separately in [workstreams.md](workstreams.md); the

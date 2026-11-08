@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qumus2"
 version = "0.1.0"
-description = "Qumus v2: autonomous 2D-materials lab agent team on the OpenAI Agents SDK, with a software testbench and web UI."
+description = "Qumus agent system: the 2D-materials lab agent team (OpenAI Agents SDK), web UI and a simulated lab, commanding lab modules through instrument service contract v1."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary - Sanfeng Wu Lab, Princeton. Do not distribute." }
@@ -54,7 +54,8 @@ include = ["qumus2*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q"
+addopts = "-q -m 'not slow'"
+markers = ["slow: long end-to-end runs (minutes); run with `pytest -m slow`"]
 
 [tool.ruff]
 line-length = 100

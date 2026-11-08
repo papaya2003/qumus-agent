@@ -301,15 +301,24 @@ def test_agent_tool_reaches_the_sim_lab_only_through_the_contract():
     assert stacking._lease_view() is None  # released on close
 
 
+@pytest.mark.slow
 def test_scripted_graphene_device_runs_through_the_windows(tmp_path):
     """The stage-1 device demo (tests/test_graphene_scenarios.py, seed 3) with the
-    agent reaching the simulated lab only through the two contract windows."""
+    agent reaching the simulated lab only through the two contract windows.
+
+    Slow (2-8 min): run with `pytest -m slow`. Stacking uses the v1 RGB vision
+    code, so it needs the `vision` extra (OpenCV), like the in-process demo."""
+    pytest.importorskip("cv2", reason="stack_device needs the vision extra: "
+                        "pip install -e '.[dev,agents,vision]'")
     s = build_services(str(tmp_path / "qumus.db"), scenario="graphene_device", seed=3,
                        contract_lab=True, simlab_ports={"exfoliation": 0, "stacking": 0})
     try:
         asyncio.run(s.runtime.send("go"))
         status = {t: r.status for a, t, r in s.runtime.results}
         assert status["submit_flake_selection"] == "ok" and status["submit_design"] == "ok"
+        failed = [(r["flow"], r["status"], r["error"]) for r in s.store.list_runs()
+                  if r["status"] != "succeeded"]
+        assert not failed, f"lab jobs did not succeed: {failed}"
         devices = s.store.list_samples(kind="device")
         assert len(devices) == 1 and devices[0]["status"] == "stacked"
         accepted = {m: [e["fields"]["action"] for e in mod.service.events(0)["events"]

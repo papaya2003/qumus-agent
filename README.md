@@ -83,9 +83,14 @@ unless `QUMUS_RECORDINGS_DIR` points to a qumus-v2 `recordings/` folder.
 ## Checks
 
 ```sh
+.venv/bin/pip install -e ".[dev,agents,vision]"   # vision: the v1 RGB recognition used by stacking
 .venv/bin/ruff check .
-.venv/bin/python -m pytest
+.venv/bin/python -m pytest              # default run, skips tests marked slow
+.venv/bin/python -m pytest -m slow      # long end-to-end runs (minutes each)
 ```
+
+Without the `vision` extra, tests that stack a device are skipped or fail in
+the same way as in qumus-v2.
 
 GitHub is storage only (no Actions); run all checks locally. The full qumus-v2
 README is kept as [docs/archive/qumus-v2-readme-0cc7826.md](docs/archive/qumus-v2-readme-0cc7826.md).

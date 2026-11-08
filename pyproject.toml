@@ -54,7 +54,8 @@ include = ["qumus2*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q"
+addopts = "-q -m 'not slow'"
+markers = ["slow: long end-to-end runs (minutes); run with `pytest -m slow`"]
 
 [tool.ruff]
 line-length = 100

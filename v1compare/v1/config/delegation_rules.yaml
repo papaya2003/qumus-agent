@@ -1,0 +1,125 @@
+# Delegation Rules for Qumus Agent System
+
+# -----------------------------------------------------------------------------
+# AGENTS
+# List of available agents and their roles.
+# -----------------------------------------------------------------------------
+agents:
+  processing_agent:
+    description: "Physical actor. Handles all hardware actions: exfoliation, search, stacking, and moving chips."
+    model: "gpt-4o"
+  
+  lab_manager_agent:
+    description: "Read-only observer. Handles YOLO CV scans, database queries, and instrument status checks."
+    model: "gpt-4o"
+
+  design_agent:
+    description: "Theorist. Handles device design, layer optimization, and file generation."
+    model: "gpt-4o"
+
+  project_manager:
+    description: "Knowledge advisor. Uses experiment history plus reasoning for parameter recommendations before experiments and after failed rounds."
+    model: "gpt-4o"
+
+# -----------------------------------------------------------------------------
+# INTENTS
+# Mapping of high-level intents to specific agent actions.
+# -----------------------------------------------------------------------------
+intents:
+  # --- EXFOLIATION & PRODUCTION ---
+  EXFOLIATE:
+    description: "Perform a mechanical exfoliation of a material onto a chip."
+    target_agent: processing_agent
+    tool_name: assembly_exfoliation  # Maps to the assembly flow
+    required_args:
+      - tape_status
+    optional_args:
+      - material_name
+      - target_T
+      - hold_V
+      - dwell_time_s
+      - tape_peel_speed_v
+      - num_massages
+    validation:
+      side_routing: LEFT_ONLY
+      requires_tape_status: true
+
+  PREPARE_TAPE:
+    description: "Prepare crystals on the scotch tape (Mother Tape)."
+    target_agent: processing_agent
+    tool_name: molecule_prepare_mother_tape
+    validation:
+      side_routing: LEFT_ONLY
+
+  CLEAR_STAGE:
+    description: "Remove all items from the exfoliation stage."
+    target_agent: processing_agent
+    tool_name: molecule_clear_stage
+    validation:
+      side_routing: LEFT_ONLY
+
+  # --- SEARCH & CHARACTERIZATION ---
+  SEARCH_CHIP:
+    description: "Search a chip for flakes using the microscope."
+    target_agent: processing_agent
+    tool_name: search_chip_assembly
+    optional_args:
+      - chip_id
+      - material_type
+      - min_area
+    notes: "Pass material_type whenever the target material is known (Gr for graphene/graphite, hBN for hBN). If chip_id is omitted, the workflow auto-selects the most recently exfoliated chip and resolves material_type from that chip record."
+    validation:
+      side_routing: RIGHT_ONLY
+
+  ACQUIRE_MATERIAL:
+    description: "Autonomously acquire material flakes meeting size criteria."
+    target_agent: qumus_agent  # Self-handled orchestration
+    required_args:
+      - material_type
+    optional_args:
+      - min_area
+      - parameter_sets
+
+  SCAN_MATERIALS:
+    description: "Perform a visual scan of the stage/storage using YOLO cameras."
+    target_agent: lab_manager_agent
+    tool_name: scan_materials # Implies the sequence: live_yolo_capture -> scan_materials
+    required_args:
+      - side  # "left", "right", or "both"
+    validation:
+      allowed_sides: ["left", "right", "both"]
+
+  CHECK_OBSTRUCTION:
+    description: "Check if the exfoliation stage is clear before an action."
+    target_agent: lab_manager_agent
+    tool_name: check_stage_obstruction
+    validation:
+      side_routing: LEFT_ONLY
+
+  # --- DATA & STATUS ---
+  QUERY_DATABASE:
+    description: "Query the inventory for chips or flakes."
+    target_agent: lab_manager_agent
+    tool_name: query_database
+    required_args:
+      - query_intent  # "count", "list", "find"
+    
+  CHECK_STATUS:
+    description: "Strictly read-only check of instrument state (vacuum, temperature, heater, etc.); never changes hardware."
+    target_agent: lab_manager_agent
+    tool_name: read_status
+    validation:
+      read_only: true
+      forbid_processing_agent: true
+      forbid_state_changes: true
+
+  # --- DESIGN ---
+  DESIGN_DEVICE:
+    description: "Design a new quantum device or heterostructure."
+    target_agent: design_agent
+    tool_name: null # General delegation
+
+  KNOWLEDGE_HISTORY:
+    description: "Answer what worked before using experiment history."
+    target_agent: project_manager
+    tool_name: query_experiments

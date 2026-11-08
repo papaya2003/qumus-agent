@@ -1,0 +1,44 @@
+name: tests
+# GitHub is repository storage only during the current phase. All acceptance
+# checks run locally; retain this definition without automatic triggers.
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # OpenAI SDK tests use deterministic model replies, without API calls.
+      # Frozen v1 executes in the separate v1-comparison job below.
+      - run: pip install -e ".[dev,agents,v1compare]"
+      - run: ruff check .
+      - run: pytest
+  # The web UI in headless Chromium: replay and live page, no console errors.
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,agents,ui-test]"
+      - run: python -m playwright install --with-deps chromium
+      - run: pytest tests/test_ui_browser.py -v
+  # The original v1 agent uses LiteLLM (openai<3); keep it isolated from
+  # OpenAI Agents SDK (openai>=3). Frozen v1 source is never changed.
+  v1-comparison:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,v1compare,v1agents]"
+      - run: pip check
+      - run: pytest tests/test_v1compare.py

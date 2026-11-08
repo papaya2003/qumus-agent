@@ -1,0 +1,74 @@
+# Self-evolution (spec 10): what the lab learns from real experiments.
+# Experience comes only from runs on the real bench; testbench (sim) runs never
+# create, vote on or confirm experience. Numbers below are starting values, to be
+# tuned once real runs exist.
+
+# A good flake (Jialei, 2026-10-21): right thickness, enough area, clean surface
+# (no excessive tape residue on the chip). Thickness and area come from the
+# target of the run (or the device plan); residue from the picker's judgement.
+good_flake:
+  residue_rejected: [heavy]
+
+# What decides a recipe in each flow (the rest are ids and resolved placement).
+# A key the flow does not have yet (peel_angle_deg before the gantry rework) is
+# simply absent from the recipe.
+recipe_keys:
+  exfoliate_chips: [target_temp_c, dwell_s, num_massages, press_depth_mm, peel_speed,
+                    peel_angle_deg]
+  search_chip: [min_area_um2]
+  stack_device: [pickup_temp_c, drop_temp_c, melt_temp_c]
+
+# Status rule. A new method must succeed several times, not once (Jialei).
+# trial -> confirmed: at least confirm_min_support supporting real runs from at
+#   least confirm_min_batches different batches (a batch = one project), and at
+#   most confirm_max_against contradicting runs.
+# trial/confirmed -> retired: at least retire_min_against contradicting runs and
+#   no more support than against.
+votes:
+  confirm_min_support: 3
+  confirm_min_batches: 2
+  confirm_max_against: 1
+  retire_min_against: 2
+
+# Secure first, explore with the rest (Jialei, 2026-10-21): the chips the task
+# needs are exfoliated with the best known recipe; only spare bare chips may be
+# used to try something new.
+explore:
+  # usable flakes per chip assumed when there are fewer than min_runs_for_estimate
+  # finished and searched runs of this material on this bench
+  default_usable_per_chip: 0.5
+  min_runs_for_estimate: 2
+  margin: 1.5               # exfoliate this many times the chips the estimate says
+  max_chips_per_run: 2      # an explore run uses at most this many chips
+  keep_bare_chips: 0        # bare chips never used for exploration
+
+# Knowledge we start with. Not experience from v2 runs: shown as such in the UI,
+# and real runs vote on it like on any other experience.
+seed:
+  - id: prior_v1_exfoliation_default_Gr
+    source: prior
+    topic: exfoliation
+    scope: {material: Gr}
+    claim: "v1 exfoliated graphite with 22 °C, 10 s dwell, 1 massage round, peel speed 500 as its default recipe."
+    recipe: {target_temp_c: 22, dwell_s: 10, num_massages: 1, peel_speed: 500}
+    reference: "v1 agents/qumus_agent/qumus_agent.py lines 213-218, 247 (orchestrator prompt defaults)"
+  - id: prior_v1_exfoliation_default_hBN
+    source: prior
+    topic: exfoliation
+    scope: {material: hBN}
+    claim: "v1 used the same default recipe for every crystal, hBN included: 22 °C, 10 s dwell, 1 massage round, peel speed 500."
+    recipe: {target_temp_c: 22, dwell_s: 10, num_massages: 1, peel_speed: 500}
+    reference: "v1 agents/qumus_agent/qumus_agent.py line 247; agents/processing_agent/processing_agent.py line 310"
+  - id: prior_v1_stacking_temperatures
+    source: prior
+    topic: stacking
+    scope: {}
+    claim: "v1 stacked with the PC stamp releasing the stack at 155 °C (drop-down temperature)."
+    recipe: {drop_temp_c: 155}
+    reference: "v1 agents/processing_agent/workflows/stacking/molecule_flows/molecule_drop_down.py line 58"
+  - id: human_good_flake_criteria
+    source: human
+    topic: flake_choice
+    scope: {}
+    claim: "A good flake has the right thickness, enough area and a clean surface: no excessive tape residue on the chip around it."
+    reference: "Stated by Jialei Chen on 2026-10-21"

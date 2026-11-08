@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qumus2"
+version = "0.1.0"
+description = "Qumus v2: autonomous 2D-materials lab agent team on the OpenAI Agents SDK, with a software testbench and web UI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary - Sanfeng Wu Lab, Princeton. Do not distribute." }
+dependencies = [
+    "pydantic>=2.6,<3",
+    "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "websockets>=12",  # uvicorn needs a websocket library for /ws/events
+    "pillow>=10.1",  # simulated camera frames with a portable, sized default font
+    "numpy>=1.26",  # bounded native RGB contact/registration uncertainty arrays
+    "shapely>=2.1,<3",  # exact planar regions, including material concavities and holes
+    "imageio-ffmpeg>=0.5",  # H.264 stacking replay clips (#205); bundles its own ffmpeg
+]
+
+[project.optional-dependencies]
+# Model-backed agents are opt-in. Scripted demos require no model credentials.
+agents = ["openai-agents==0.24.0"]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.5"]
+# The web UI in a real browser (tests/test_ui_browser.py; then: playwright install chromium).
+ui-test = ["playwright>=1.48"]
+# Headless KLayout save/reopen of device designs (QUMUS_KLAYOUT_BACKEND=python).
+design = ["klayout>=0.29"]
+# Maintained material-only RGB adapter; no frozen specialist or model SDK.
+vision = ["opencv-python-headless>=4.8", "scipy>=1.11", "scikit-image>=0.22"]
+# Running the unchanged v1 copy on the testbench (v1compare/): v1's own imports.
+v1compare = ["smolagents>=1.20", "sqlalchemy>=2.0", "opencv-python-headless>=4.8",
+             "numpy>=1.26", "scipy>=1.11", "scikit-image>=0.22", "matplotlib>=3.8",
+             "watchdog>=4", "tqdm>=4.66", "pillow>=10.1", "python-dotenv>=1.0", "requests>=2.31",
+             "tenacity>=8"]
+# LiteLLM currently requires openai<3; Agents SDK 0.24 requires openai>=3.
+# Install the paid v1-agent comparison in its own environment, without agents.
+# Frozen v1 specialists retain their original SDK; never install this extra in .venv.
+v1agents = ["litellm>=1.70", "claude-agent-sdk==0.2.168"]
+
+[project.scripts]
+qumus2 = "qumus2.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["qumus2*"]
+
+[tool.setuptools.package-data]
+"qumus2" = ["config/*.yaml", "agents/prompts/*.md",
+            "agents/skills/skills/**/*", "testbench/scenarios/*.yaml", "ui/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["v1compare/v1"]  # byte-identical copy of v1, not our code
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]

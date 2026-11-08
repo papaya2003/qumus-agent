@@ -1,0 +1,57 @@
+--- klayoutclaw_server.lym
++++ klayoutclaw_server.lym
+@@ -438,7 +438,17 @@
+         "inputSchema": {
+             "type": "object",
+             "properties": {
+-                "code": {"type": "string", "description": "Python code to execute"}
++                "code": {"type": "string", "description": "Python code to execute"},
++                "atomic_new_layout": {
++                    "type": "object",
++                    "description": "Optional atomic-new-layout-v1: create a fresh layout tab before handle acquisition, then execute code in that owned tab in the same Qt call. Existing tabs are untouched.",
++                    "properties": {
++                        "name": {"type": "string", "minLength": 1, "maxLength": 128},
++                        "dbu": {"type": "number", "exclusiveMinimum": 0}
++                    },
++                    "required": ["name", "dbu"],
++                    "additionalProperties": False
++                }
+             },
+             "required": ["code"]
+         }
+@@ -702,10 +712,23 @@
+ 
+ def _tool_execute_script(args):
+     global _layout, _layout_view, _top_cell, _exec_seq
+-    _ensure_valid_handles()
+     code = args.get("code")
+-    if not code:
++    if not isinstance(code, str) or not code.strip():
+         raise ValueError("Missing required parameter: code")
++    atomic = args.get("atomic_new_layout")
++    if atomic is None:
++        _ensure_valid_handles()
++    else:
++        # Validate before any view or layout is touched. Do not acquire the
++        # current view: an empty user tab would otherwise receive a TOP cell.
++        if type(atomic) is not dict or set(atomic) != {"name", "dbu"}:
++            raise ValueError("atomic_new_layout requires exactly name and dbu")
++        name, dbu = atomic["name"], atomic["dbu"]
++        if not isinstance(name, str) or not name.strip() or len(name) &gt; 128:
++            raise ValueError("atomic_new_layout name must be a nonempty string of at most 128 characters")
++        if type(dbu) not in (int, float) or not (dbu &gt; 0 and dbu != float("inf")):
++            raise ValueError("atomic_new_layout dbu must be finite and positive")
++        _tool_create_layout({"name": name, "dbu": dbu})
+     # Auto-save code block to /tmp/KLayout_Execute/ (best-effort, never blocks execution)
+     _exec_seq += 1
+     try:
+@@ -794,6 +817,9 @@
+         result = {"status": "ok", "result": result}
+     result["stdout"] = _stdout_val
+     result["stderr"] = _stderr_val
++    if atomic is not None:
++        result["atomic_new_layout"] = {
++            "profile": "atomic-new-layout-v1", "name": atomic["name"], "dbu": atomic["dbu"]}
+     if _protections:
+         result["protections_applied"] = _protections
+         # Surface the protection marker even when the user's script didn't

@@ -1,0 +1,67 @@
+{
+  "template_id": "graphene_qh_edge_contact_default_v1",
+  "enabled": true,
+  "source_run": "run_187",
+  "source_project_id": "graphene-quantum-hall-device-edge-contact-473ad66b",
+  "workflow_id": "graphene_qh_hall_bar_ideal_layout",
+  "verification": {
+    "status": "ok",
+    "all_checks_passed": true,
+    "check_count": 20,
+    "failed_checks": [],
+    "verified_at": "2026-09-11T18:05:49-04:00"
+  },
+  "default_geometry": {
+    "device_family": "graphene_quantum_hall_edge_contact",
+    "stack_top_to_bottom": [
+      "top_hbn",
+      "monolayer_graphene",
+      "bottom_hbn",
+      "bottom_graphite_gate"
+    ],
+    "preferred_hall_channel_um": [10.0, 20.0],
+    "minimum_hall_channel_um": [5.0, 10.0],
+    "graphene_transport_terminal_count": 10,
+    "graphite_gate_terminal_count": 1,
+    "contact_style": "1D edge contact",
+    "contact_metal": "5 nm Cr / 60-65 nm Au",
+    "merged_local_electrode_layer": "10/0",
+    "gate_contact_side": "left",
+    "gate_contact_shape": "T"
+  },
+  "artifacts": {
+    "ideal_gds": {
+      "path": "images/stacking/run_187/design/claude_klayout_handoff/ideal_device.gds",
+      "sha256": "c755be2bc3d5965b5511d329675709369cdcdd0ec3c93fdd0a6e5ef0f549b35c"
+    },
+    "ideal_screenshot": {
+      "path": "images/stacking/run_187/design/claude_klayout_handoff/ideal_device_screenshot.png",
+      "sha256": "81c6c3e04bd63002417a9067c03b74bb0c17c5941270ca749f2212db849bf514"
+    },
+    "ideal_result": {
+      "path": "images/stacking/run_187/design/claude_klayout_handoff/ideal_device_result.json",
+      "sha256": "7dfeac83c953de5829848bbe0c570c9984411a7af189ed003bfda319a579e34b"
+    },
+    "verified_build_script": {
+      "path": "images/stacking/run_187/design/claude_klayout_handoff/ideal_device_build_refined.py",
+      "sha256": "9428fee0587abc23394dc9c6c9980b19c875ba0a7a5aff39703136a5cc28854f"
+    }
+  },
+  "dependencies": {
+    "peripheral_template_gds": {
+      "path": "agents/design_agent/output/new_electrodes_500um_samplearea.GDS",
+      "sha256": "c67341714362490f402731ac4100a89860ee59e6b21ed924e017a0fdf94eada6"
+    },
+    "template_profile": {
+      "path": "agents/design_agent/skills/graphene-qh-device/references/graphene-qh-template-profile.json",
+      "sha256": "8ea71ac48e42d234dbfce3f21267258dcaec67b7b8d1c2f2177e4809bd917a02"
+    }
+  },
+  "reuse_policy": {
+    "default_for_matching_requests": true,
+    "skip_claude_ideal_redesign": true,
+    "materialize_into_active_run": true,
+    "real_flake_adaptation_still_required": true,
+    "explicit_human_geometry_overrides_require_redesign": true
+  }
+}

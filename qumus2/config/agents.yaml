@@ -1,0 +1,28 @@
+# Agent team. The selected model and gateway configuration come from QUMUS_OPENAI_*.
+max_budget_usd: 40.0
+
+agents:
+  orchestrator: {max_turns: 500}
+  advisor:      {max_turns: 40}
+  eyes:         {max_turns: 40}
+  hands:        {max_turns: 80}
+  picker:       {max_turns: 40, skills: [flake-selection]}
+  designer:     {max_turns: 60, skills: [graphene-qh-device]}
+  reactor:      {max_turns: 80}
+
+# Hands' recovery menu (spec 4.3 L1): attempts per failed job (retries of its
+# replacements included) and per project; then only request_human_help.
+recovery: {per_job: 2, per_project: 20}
+
+# OpenAI runtime: model ID and gateway token rates come from QUMUS_OPENAI_*.
+# Limits stop further calls; one in-flight model request can cross a cap.
+openai:
+  max_output_tokens: 4096
+  max_total_tokens: 2000000
+  min_request_interval_s: 3.0
+
+picking:
+  # v1 rule: a flake without readable 100X and 20X optical images cannot be
+  # selected. The testbench saves microscope images when the run store is a
+  # file (":memory:" runs write none, so tests there switch it off).
+  require_optical_images: true

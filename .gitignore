@@ -1,0 +1,45 @@
+# Secrets: never commit (spec 12.3)
+.env
+.env.*
+!.env.example
+*.key
+
+# Lab run data and large binaries (spec 12.3)
+runs/
+# Recordings of imported lab targets carry electrode geometry: never commit
+# (record_hallbar_night.py exports hallbar-*; Mac live runs used qwen*).
+recordings/hallbar-*/
+recordings/qwen*/
+data/
+images/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.pt
+*.onnx
+*.ckpt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv
+.venv-v1compare
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+*.pkl
+
+# v1compare: files the v1 copy writes into its own tree at run time
+v1compare/v1/agents/processing_agent/tools/status/
+v1compare/v1/logs/

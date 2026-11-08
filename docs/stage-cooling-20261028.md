@@ -58,7 +58,7 @@ locked readings of both ordinary stages strictly below 40 C, heaters off and fan
 commanded off. Intermediate handling retains its separate 60 C threshold.
 Failures, unknown feedback and interrupted cooling do not establish completion.
 The authoritative execution, locking and recovery contract is in
-[Architecture: final experiment cooling](architecture.md#final-experiment-cooling).
+[Simulation contracts: final experiment cooling](sim-contracts.md#final-experiment-cooling).
 
 The Progress Top view retains one outer card, one heading and Expand; its inner
 map frame is removed. This presentation change does not alter historical data.

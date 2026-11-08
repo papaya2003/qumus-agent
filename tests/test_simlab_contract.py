@@ -292,3 +292,25 @@ def test_agent_tool_reaches_the_sim_lab_only_through_the_contract():
     finally:
         _close_owned_services(s)
     assert stacking._lease_view() is None  # released on close
+
+
+def test_scripted_graphene_device_runs_through_the_windows(tmp_path):
+    """The stage-1 device demo (tests/test_graphene_scenarios.py, seed 3) with the
+    agent reaching the simulated lab only through the two contract windows."""
+    s = build_services(str(tmp_path / "qumus.db"), scenario="graphene_device", seed=3,
+                       contract_lab=True, simlab_ports={"exfoliation": 0, "stacking": 0})
+    try:
+        asyncio.run(s.runtime.send("go"))
+        status = {t: r.status for a, t, r in s.runtime.results}
+        assert status["submit_flake_selection"] == "ok" and status["submit_design"] == "ok"
+        devices = s.store.list_samples(kind="device")
+        assert len(devices) == 1 and devices[0]["status"] == "stacked"
+        accepted = {m: [e["fields"]["action"] for e in mod.service.events(0)["events"]
+                        if e["message"] == "command accepted"]
+                    for m, mod in s.simlab.modules.items()}
+        flows = [r["flow"] for r in s.store.list_runs()]
+        assert sorted(accepted["exfoliation"] + accepted["stacking"]) == sorted(flows)
+        assert "exfoliate_chips" in accepted["exfoliation"]
+        assert "stack_device" in accepted["stacking"]
+    finally:
+        _close_owned_services(s)

@@ -45,7 +45,7 @@ The new architecture (Jialei, 2026-11-08) has three repositories:
 ## 3. What changes
 
 1. **In-process lab → contract clients.** `app.build_services` no longer needs to own devices.
-   A new lab mode, `contract`, gives the agent a `ContractJobService` (`qumus2/simlab/agent_link.py`)
+   A new lab mode (`serve --contract-lab`) gives the agent a `ContractJobService` (`qumus2/simlab/agent_link.py`)
    with the same methods as `JobService` (`submit`, `wait`, `status`, `cancel`, `stop_all`, ...).
    It turns `submit(flow, params)` into `POST /api/command {"action": flow, ...params}` on the
    module that owns the flow, keeps the control lease alive while a command runs, and reads the
@@ -70,7 +70,8 @@ The new architecture (Jialei, 2026-11-08) has three repositories:
    Gaps (human-approval gateway vs no-approval rule, network, chip hand-over) are in thread C's
    `docs/reactor-gaps.md`.
 6. **No real drivers here.** Real hardware code lives in qumus-lab. `devices/real/reactor.py`
-   (old in-process reactor adapter) is legacy and will be removed when the reactor window works.
+   (old in-process reactor vendor adapters) is **retired for the real reactor**: the reactor
+   services own those devices (thread C gap G15). It stays only until the sim no longer imports it.
 
 ## 4. The sim lab (default decision, Jialei may override)
 
@@ -83,7 +84,7 @@ contract as qumus-lab: two services, `exfoliation` and `stacking`, over one shar
 - qumus-lab's own `--demo` is device-level only (positions, switches, temperatures) and is used
   for the lab debug page and L1-L2 scripts, not for whole experiments.
 
-What the sim lab serves tonight (`qumus2/simlab/contract.py`, `modules.py`, tests in
+What the sim lab serves tonight (`qumus2/simlab/service.py`, `modules.py`, tests in
 `tests/test_simlab_contract.py`):
 
 | Endpoint | Behaviour |
@@ -107,9 +108,9 @@ existing SafetyGate. A motion command whose outcome is unknown (device timeout) 
 | --- | --- | --- |
 | 1 | Import qumus-v2 0cc7826 without recordings | done (`main` 84b85fd) |
 | 2 | This plan | done |
-| 3 | Sim lab services (contract server, two modules, tests) | done tonight, see PR |
-| 4 | `ContractJobService` + `serve --lab contract`: scripted agent runs flows through the contract | done tonight for submit/wait/status/cancel/stop; full scripted Hall bar through it is the next check |
-| 5 | Generic contract client (thread C, `qumus2/contract/`) replaces the small client in `simlab/agent_link.py` | after thread C's PR |
+| 3 | Sim lab services (contract server, two modules, tests) | done tonight |
+| 4 | `ContractJobService` + `serve --contract-lab`: agent tools submit jobs through the contract | done tonight (tested: hands tool → stacking window → job done) |
+| 5 | Generic contract client (thread C, `qumus2/contract/`) used by `simlab/agent_link.py` | done (this branch includes thread C's commit) |
 | 6 | UI lab panel reads module `/api/state` + `/api/events` | next |
 | 7 | Recordings store module events | next |
 | 8 | Reactor window (thread C adapter) | gap list from thread C |
@@ -120,7 +121,7 @@ existing SafetyGate. A motion command whose outcome is unknown (device timeout) 
 
 | Old (qumus-v2) | New role in qumus-agent |
 | --- | --- |
-| `app.py build_lab_side` | used only by the sim lab (`simlab/server.py`) |
+| `app.py build_lab_side` | the sim lab's bench (`simlab/server.py`); legacy demo |
 | `app.py build_services` | agent side; lab = in-process (legacy demo) or `contract` |
 | `runtime/jobs.py` JobService | inside the sim lab only; the agent uses `ContractJobService` |
 | `runtime/labproc.py`, `rpc.py`, `remote.py`, `supervisor.py` | legacy, removed at step 10 |
@@ -128,7 +129,7 @@ existing SafetyGate. A motion command whose outcome is unknown (device timeout) 
 | `runtime/twin.py` | sim lab only (bench drawing for the sim UI) |
 | `safety/` | sim lab only; real SafetyGate lives in qumus-lab |
 | `devices/base.py`, `devices/sim/` | sim lab only |
-| `devices/real/reactor.py` | legacy; reactor via contract (thread C) |
+| `devices/real/reactor.py` | retired for the real reactor (gap G15); reactor via contract (`qumus2/reactor`) |
 | `flows/` | sim lab only; on real hardware these become qumus-lab module actions |
 | `testbench/` | sim lab only |
 | `perception/` | sim lab now; real recognition is a qumus-lab module job (contract: actions + recognition per module) |

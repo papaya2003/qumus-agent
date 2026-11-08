@@ -227,7 +227,7 @@ Those historical billing observations do not qualify the current Hall-bar
 campaign. Its first Astra recording has an inclusive estimated USD100 cap,
 including qualification and failed/unknown requests, with input/output rates
 of USD10/USD50 per million and no assumed cached-input discount. Its separate
-finite admission checks are described in [architecture.md](architecture.md#current-hall-bar-recording-contract).
+finite admission checks are described in [sim-contracts.md](sim-contracts.md#current-hall-bar-recording-contract).
 The remaining fourteen recordings have no execution authorization or budget.
 
 Settings displays a separate cost estimate calibrated from a private

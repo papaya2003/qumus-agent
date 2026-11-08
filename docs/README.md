@@ -1,12 +1,26 @@
 # Qumus documentation
 
-The current workflow is the hBN/graphene Hall bar on the eight-electrode chip,
-run in the simulated laboratory with the OpenAI Agents SDK runtime. Start with
+This is the agent system. Start with the [repository README](../README.md), the
+[architecture](architecture.md) (three repositories and the window rules) and the
+[adaptation plan](adaptation-plan.md) (what changed from qumus-v2 and what comes next).
+
+## Agent system and lab windows
+
+| Read | Purpose |
+| --- | --- |
+| [Architecture](architecture.md) | Agent side vs lab modules, contract v1, where things are |
+| [Adaptation plan](adaptation-plan.md) | Kept / changed parts, old file to new role, steps |
+| [Open questions](open-questions.md) | Defaults chosen without the owner |
+| [Contract client](contract-client.md) | The client every window uses |
+| [Reactor gaps](reactor-gaps.md) | What still blocks the reactor window |
+
+## Simulated Hall-bar workflow (from qumus-v2)
+
+The hBN/graphene Hall bar on the eight-electrode chip runs in the simulated
+laboratory with the OpenAI Agents SDK runtime. Start with
 the [Hall-bar workflow](hallbar-workflow.md). Dated reports from earlier rounds
 are in [historical documents](archive/README.md); they do not describe current
 behavior.
-
-## Current workflow
 
 | Read | Purpose |
 | --- | --- |
@@ -14,7 +28,7 @@ behavior.
 | [Local startup](local-start.md) | Mac setup, the single launcher, History and recordings |
 | [Hall-bar workflow](hallbar-workflow.md) | Steps, owner decisions, save points and where the code is |
 | [Stacking process (v1)](stacking-process-v1.md) | The version 1 stacking sequence the simulation follows |
-| [Architecture and contracts](architecture.md) | Interfaces, evidence rules and known apparatus-model differences |
+| [Simulation contracts](sim-contracts.md) | Agent/job/step/event/UI interfaces, evidence rules and known apparatus-model differences |
 | [Testbench](testbench.md) | Simulated laboratory, faults and limitations |
 | [OpenAI runtime](runtime.md) | Environments, configuration, budgets and validation |
 | [Agent model settings](agent-model-settings.md) | Choosing a model per agent |

@@ -1,8 +1,11 @@
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { Replay, eventGap, eventTimes, eventTimeLabel } from '../qumus2/ui/static/replay.js';
 import { moments } from '../qumus2/ui/static/history.js';
+// qumus-v2 recordings: here, or a qumus-v2 checkout's recordings/ (tests/conftest.py v2_recording)
+const RECORDINGS = process.env.QUMUS_RECORDINGS_DIR ? pathToFileURL(process.env.QUMUS_RECORDINGS_DIR.replace(/\/?$/, '/')) : new URL('../recordings/', import.meta.url);
 
 test('fast simulated instruments retain their lab time beside wall time', () => {
   const events = [
@@ -28,7 +31,7 @@ test('separate process epochs do not invent elapsed months', () => {
 });
 
 test('historical reactor recording gains useful navigation without rewriting data', () => {
-  const rec = JSON.parse(readFileSync(new URL('../recordings/experimental-reactor-pair-normal-20261027-v3/recording.json', import.meta.url)));
+  const rec = JSON.parse(readFileSync(new URL('experimental-reactor-pair-normal-20261027-v3/recording.json', RECORDINGS)));
   const original = JSON.stringify(rec);
   const nav = moments(rec.events);
   assert.ok(nav.some(m => m.text.includes('Single reactor product accepted')));

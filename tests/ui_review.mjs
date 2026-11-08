@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 // Offline event regressions; no browser, network, model calls or hardware.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,13 +10,15 @@ import { requestSeries, requestEmptyText } from '../qumus2/ui/static/requestchar
 
 import { LabState, fromBench } from '../qumus2/ui/static/labstate.js';
 import { Replay } from '../qumus2/ui/static/replay.js';
+// qumus-v2 recordings: here, or a qumus-v2 checkout's recordings/ (tests/conftest.py v2_recording)
+const RECORDINGS = process.env.QUMUS_RECORDINGS_DIR ? pathToFileURL(process.env.QUMUS_RECORDINGS_DIR.replace(/\/?$/, '/')) : new URL('../recordings/', import.meta.url);
 
-const recording = JSON.parse(readFileSync(new URL('../recordings/openai-device-approval-20261025/recording.json', import.meta.url)));
-const collaboration = JSON.parse(readFileSync(new URL('../recordings/openai-collaboration-20261025/recording.json', import.meta.url)));
-const legacyReactor = JSON.parse(readFileSync(new URL('../recordings/archive/experimental-reactor-mechanics-20261026/recording.json', import.meta.url)));
-const spacedReactor = JSON.parse(readFileSync(new URL('../recordings/archive/experimental-reactor-equal-spacing-20261026/recording.json', import.meta.url)));
-const clearReactor = JSON.parse(readFileSync(new URL('../recordings/archive/experimental-reactor-clearance-20261026/recording.json', import.meta.url)));
-const pairReactor = JSON.parse(readFileSync(new URL('../recordings/experimental-reactor-pair-normal-20261027-v3/recording.json', import.meta.url)));
+const recording = JSON.parse(readFileSync(new URL('openai-device-approval-20261025/recording.json', RECORDINGS)));
+const collaboration = JSON.parse(readFileSync(new URL('openai-collaboration-20261025/recording.json', RECORDINGS)));
+const legacyReactor = JSON.parse(readFileSync(new URL('archive/experimental-reactor-mechanics-20261026/recording.json', RECORDINGS)));
+const spacedReactor = JSON.parse(readFileSync(new URL('archive/experimental-reactor-equal-spacing-20261026/recording.json', RECORDINGS)));
+const clearReactor = JSON.parse(readFileSync(new URL('archive/experimental-reactor-clearance-20261026/recording.json', RECORDINGS)));
+const pairReactor = JSON.parse(readFileSync(new URL('experimental-reactor-pair-normal-20261027-v3/recording.json', RECORDINGS)));
 
 for (const [label, reactor] of [['original', legacyReactor], ['equal spacing', spacedReactor], ['assembly clearance', clearReactor], ['two-flake pair', pairReactor]]) {
 test(`${label}: recorded insertion and retraction carry the chip through intermediate positions`, () => {
@@ -318,7 +321,7 @@ test('a later admitted delegation retires prerequisite refusals but not unrelate
 });
 
 test('reactor owner review: both prerequisite refusals and the resumed budget blocker recover with links', () => {
-  const data = JSON.parse(readFileSync(new URL('../recordings/openai-integrated-reactor-20261027-v5/recording.json', import.meta.url)));
+  const data = JSON.parse(readFileSync(new URL('openai-integrated-reactor-20261027-v5/recording.json', RECORDINGS)));
   const s = new Session();
   for (const e of data.events) s.add(e);
   for (const id of [5075, 5083, 10985]) {
@@ -374,7 +377,7 @@ test('matching budget notices emitted before and after the failed turn both reta
 });
 
 test('v5 refused obligation edits recover only after the unchanged linked job completes', () => {
-  const data = JSON.parse(readFileSync(new URL('../recordings/openai-material-metal-default-20261028-v5/recording.json', import.meta.url)));
+  const data = JSON.parse(readFileSync(new URL('openai-material-metal-default-20261028-v5/recording.json', RECORDINGS)));
   const replay = events => { const t = new ToolAttempts(); for (const e of events) t.add(e); return t; };
   const ids = [11678, 11683], checkId = 14483;
   const prefix = replay(data.events.filter(e => e.id < checkId));

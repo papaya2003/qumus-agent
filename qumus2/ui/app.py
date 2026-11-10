@@ -64,8 +64,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from qumus2.agents.roster import ALL_AGENTS, DESCRIPTIONS, UI_LABELS
 from qumus2.app import Services
+from qumus2.core.bench import positions, regions
 from qumus2.core.run_paths import resolve_run_path
-from qumus2.flows.bench import positions, regions
 
 STATIC = Path(__file__).parent / "static"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
@@ -145,7 +145,7 @@ class MessageIn(BaseModel):
 
 
 class FaultIn(BaseModel):
-    fault: str  # one of testbench.faults.FAULTS (GET /api/faults)
+    fault: str  # one of the simulated lab's faults (GET /api/faults)
     params: dict[str, Any] = {}
 
 
@@ -165,21 +165,20 @@ class LaboratoryModeIn(BaseModel):
 
 
 def laboratory_capabilities(s: Services) -> dict[str, Any]:
-    """Report the wired backend; a mode label never creates a device adapter."""
-    from qumus2.runtime.remote import RemoteLab
-    from qumus2.testbench.lab import SimLab
-
-    simulated = isinstance(s.lab, (SimLab, RemoteLab))
-    detail = ("Connect and verify physical device adapters through the existing SafetyGate and job service, "
-              "with a dedicated real laboratory record store and submission-bound backend provenance. "
-              "This application currently wires simulation adapters only.")
-    return {"mode": "virtual" if simulated else "unknown",
-            "backend": "qumus2.sim" if simulated else "unverified_backend",
-            "modes": [{"id": "virtual", "label": "Virtual laboratory", "available": simulated},
-                      {"id": "real", "label": "Real laboratory", "available": False, "detail": detail}],
+    """Which laboratory the brain is wired to: the stations in stations.yaml."""
+    st = s.stations
+    simulated = st.all_sim
+    mode = "virtual" if simulated else ("real" if not st.any_sim else "mixed")
+    detail = ("Point a module at a real station in stations.yaml (kind: real) and restart; "
+              "the brain reaches every station only through contract v1.")
+    return {"mode": mode,
+            "backend": "stations",
+            "stations": [s_.to_dict() for s_ in st.modules.values()],
+            "modes": [{"id": "virtual", "label": "Virtual laboratory", "available": st.any_sim},
+                      {"id": "real", "label": "Real laboratory", "available": not simulated, "detail": detail}],
             "learning": {"enabled": False, "status": "disabled_virtual" if simulated else "unverified_backend",
                 "detail": "Learning is disabled in the virtual laboratory. Existing validated advice remains readable."
-                    if simulated else "Learning is disabled until a physical backend and recording provenance are verified."},
+                    if simulated else "Learning is disabled until recording provenance of real stations is verified."},
             "switch_available": False, "real_setup_requirement": detail}
 
 
@@ -194,78 +193,34 @@ class FilmIn(BaseModel):
     by: str = Field("", max_length=80)  # the person's name, if they gave one
 
 
-def _device_state(dev: Any) -> dict[str, Any]:
-    """Read-only view of one device for the lab panel. Never commands anything."""
-    out: dict[str, Any] = {"id": dev.device_id, "kind": type(dev).__name__.removeprefix("Sim"),
-                           "offline": bool(getattr(dev, "offline", False))}
-    if getattr(dev, "stuck_at", None) is not None:
-        out["stuck_at"] = dev.stuck_at
-    try:
-        if hasattr(dev, "get_pose"):
-            out["pose"] = dev.get_pose().model_dump()  # an arm: in its own frame
-        if hasattr(dev, "world_pose"):
-            out["world_pose"] = dev.world_pose().model_dump()
-        if hasattr(dev, "is_homed"):
-            out["homed"] = bool(dev.is_homed())
-        if hasattr(dev, "remaining_mm"):
-            out["roll_left_mm"] = dev.remaining_mm()
-        if hasattr(dev, "focus_plane"):
-            out["focus_plane"] = dev.focus_plane()
-        if hasattr(dev, "get_objective"):
-            out["objective"] = dev.get_objective()
-        if hasattr(dev, "get_positions"):
-            out["positions"] = {k: round(v, 2) for k, v in dev.get_positions().items()}
-        if hasattr(dev, "vacuum_on"):
-            out["vacuum"] = dev.vacuum_on()
-        if hasattr(dev, "read_temperature") and not out["offline"]:
-            out["temperature"] = round(dev.read_temperature(), 1)
-            out["target"] = dev.get_target()
-        if hasattr(dev, "read_flow") and not out["offline"]:
-            out["flow_sccm"] = round(dev.read_flow(), 1)
-            out["flow_target_sccm"] = dev.get_target()
-        if hasattr(dev, "get") and callable(dev.get) and not hasattr(dev, "get_pose"):
-            out["on"] = bool(dev.get())
-    except Exception as e:  # noqa: BLE001 - a status read must never break the page
-        out["error"] = str(e)
-    return out
-
-
 def bench_state(s: Services) -> dict[str, Any]:
     """What GET /api/bench shows besides the static layout: device states,
-    objects, the held stamp, faults, busy. The recorder saves the same dict over
-    time, so a replay shows the bench exactly as the live page did."""
+    objects, the held stamp, faults, busy (from the station's /api/sim/bench_state).
+    The recorder saves the same dict over time, so a replay shows the bench
+    exactly as the live page did."""
     from qumus2.records.lab_geometry import observed_scene
 
     # Bind evidence before reading any live diagnostics. Recorder snapshots
     # retain this exact prefix; synthetic state never supplies observed poses.
     through = s.store.last_event_id()
     observed = observed_scene(s.store, through_event_id=through)
-    w = s.lab.world
-    f = w.faults
-    objects = w.snapshot()
+    remote = s.lab.bench_state()
+    objects = [dict(o) for o in remote.get("objects") or []]
     status = {x["id"]: x["status"] for x in s.store.list_samples(kind="stamp")}
     for o in objects:
-        if o["kind"] == "stamp":
-            o["status"] = status.get(o["id"], "fresh")
-    return {
-        "devices": [_device_state(d) for d in s.lab.devices.devices.values()],
+        if o.get("kind") == "stamp":
+            o["status"] = status.get(o["id"], o.get("status") or "fresh")
+    out = {
+        "devices": remote.get("devices") or [],
         "objects": objects,
-        # device readings + objects in one picture (runtime/twin.py); `lab.frame`
-        # events carry what changes after each command
-        "twin": {**(s.lab.twin.state() if hasattr(s.lab, "twin") else {}),
-                 "observed_scene": observed},
-        "stamp": w.stamp_snapshot() if hasattr(w, "stamp_snapshot") else None,
-        # lasting faults, plus the one-shot ones still armed
-        "faults": {"pick_fail_prob": f.pick_fail_prob, "big_error_prob": f.big_error_prob,
-                   "next_placement": f.next_placement,
-                   "armed": {"pick_fail_next": f.pick_fail_next,
-                             "drop_in_transit": int(bool(f.drop_next)),
-                             "pickup_fail_next": getattr(f, "pickup_fail_next", 0),
-                             "release_fail_next": getattr(f, "release_fail_next", 0),
-                             "stamp_torn_next": int(bool(getattr(f, "tear_next_stamp",
-                                                                 False)))}},
+        "twin": {**(remote.get("twin") or {}), "observed_scene": observed},
+        "stamp": remote.get("stamp"),
+        "faults": remote.get("faults") or {},
         "busy": s.runtime.busy,
     }
+    if remote.get("error"):
+        out["station_error"] = remote["error"]
+    return out
 
 
 def _same_origin(ws: WebSocket) -> bool:
@@ -348,8 +303,10 @@ def create_app(services: Services, *, start_driver: bool = True,
                               "laboratory": laboratory_capabilities(s),
                               "model_status": model_health.state if model_health is not None
                               else {"state": "scripted"}}
-        out["workspace"] = ("Integrated lab" if "reactor_module" in s.lab.bench
-                            else "Previous two-arm lab")
+        out["workspace"] = s.lab.bench.get("name") or "Hall-bar laboratory"
+        out["stations"] = {m: {"url": st.url, "kind": st.kind} for m, st in s.stations.modules.items()}
+        out["mirror"] = {"online": s.jobs.mirror.online if s.jobs.mirror else False,
+                         "error": s.jobs.mirror.last_error if s.jobs.mirror else None}
         if getattr(s.runtime, "provider", None) == "openai":
             out.update(provider="openai", model=s.runtime.creds.model_id)
             settings = getattr(s.runtime, 'model_settings', lambda: {})()
@@ -370,14 +327,14 @@ def create_app(services: Services, *, start_driver: bool = True,
 
     @app.get("/api/windows")
     def windows() -> dict[str, Any]:
-        """Lab module windows (contract v1) the agent is connected to, with each
-        window's own state summary; empty for the in-process testbench."""
-        clients = getattr(s.jobs, "clients", None)
-        if not clients:
-            return {"mode": "in-process", "windows": []}
+        """Laboratory stations (contract v1) the brain is connected to: sim/real,
+        online/offline and each window's own state summary."""
+        clients = getattr(s.jobs, "clients", None) or {}
         out = []
         for module, client in clients.items():
-            row: dict[str, Any] = {"module": module, "url": client.base_url}
+            station = s.stations.modules.get(module)
+            row: dict[str, Any] = {"module": module, "url": client.base_url,
+                                   "kind": station.kind if station else "sim"}
             try:
                 st = client.state()
                 row.update(reachable=True, demo=st.demo, busy=st.busy, locked=st.locked,
@@ -387,6 +344,13 @@ def create_app(services: Services, *, start_driver: bool = True,
                 row.update(reachable=False, error=str(exc))
             out.append(row)
         return {"mode": "contract", "windows": out}
+
+    @app.get("/api/stations")
+    def stations() -> dict[str, Any]:
+        mirror = s.jobs.mirror
+        return {**s.stations.to_dict(),
+                "mirror": {"online": mirror.online, "error": mirror.last_error,
+                           "applied": mirror.applied} if mirror else None}
 
     @app.post("/api/laboratory/mode")
     def choose_laboratory(choice: LaboratoryModeIn) -> dict[str, Any]:
@@ -409,7 +373,7 @@ def create_app(services: Services, *, start_driver: bool = True,
         if camera_id not in s.lab.bench.get("cameras", {}) and camera_id != "microscope" \
                 and not optional_scope:
             raise HTTPException(status_code=404, detail=f"unknown camera {camera_id}")
-        p = s.lab.preview(camera_id) if hasattr(s.lab, "preview") else None
+        p = s.lab.preview(camera_id)
         if p is None:
             return {"device": camera_id, "image": None, "timestamp": None, "meta": {}}
         image = None
@@ -510,6 +474,7 @@ def create_app(services: Services, *, start_driver: bool = True,
             "samples": s.store.list_samples(),
             "locks": s.store.locks(),
             "world": s.lab.world.snapshot(),
+            "stations": s.stations.to_dict(),
             "agents": [{"name": a, "label": UI_LABELS[a], "description": DESCRIPTIONS[a]}
                        for a in ALL_AGENTS],
             "busy": s.runtime.busy,
@@ -593,8 +558,8 @@ def create_app(services: Services, *, start_driver: bool = True,
             raise HTTPException(status_code=409, detail=str(e)) from e
 
     def layout() -> dict[str, Any]:
-        if "layout" not in cache:
-            cache["layout"] = bench_layout(s.lab.bench)
+        if not cache.get("layout"):
+            cache["layout"] = s.lab.layout()
         return cache["layout"]
 
     @app.get("/api/bench")

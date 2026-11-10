@@ -653,7 +653,8 @@ function modeText() {
       m.agents === 'sdk' ? `Model-driven recording: ${modelName()} drove the recorded laboratory; this page plays it back, nothing is sent anywhere`
         : 'Scripted agents on the testbench; this page plays it back, nothing is sent anywhere'];
   }
-  return ['LIVE', `${S.laboratory?.mode === 'virtual' ? 'Virtual laboratory' : 'Laboratory'} · ${S.workspace || 'Testbench'} · ${S.mode === 'sdk' ? S.models?.length > 1 ? `${S.models.length} team models` : S.model || modelName() : 'scripted'}`,
+  const stationBadge = (S.laboratory?.stations || []).map(st => `${st.module} ${st.kind === 'real' ? 'REAL' : 'sim'}`).join(', ');
+  return ['LIVE', `${S.laboratory?.mode === 'virtual' ? 'Virtual laboratory' : S.laboratory?.mode === 'mixed' ? 'Mixed laboratory' : 'Laboratory'}${stationBadge && S.laboratory?.mode !== 'virtual' ? ` (${stationBadge})` : ''} · ${S.workspace || 'Testbench'} · ${S.mode === 'sdk' ? S.models?.length > 1 ? `${S.models.length} team models` : S.model || modelName() : 'scripted'}`,
     S.mode === 'sdk' ? `${S.model || modelName()} drives the simulated lab; model calls use API credit`
       : 'Scripted agents: what the agents say and choose comes from a scenario file; tools, safety layer and testbench are real; nothing costs money'];
 }

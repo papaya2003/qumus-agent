@@ -203,10 +203,9 @@ async def get_instrument_status(args: InstrumentStatusArgs, ctx: ToolContext) ->
             "area is clear or that the ledger matches the bench.",
             agents={"eyes"}, kind="query")
 async def inspect_bench(args: InspectArgs, ctx: ToolContext) -> ToolResult:
-    from qumus2.config import load_yaml
-    from qumus2.flows.bench import regions
+    from qumus2.core.bench import regions
 
-    valid = regions(ctx.extra.get("bench") or load_yaml("bench.yaml"))
+    valid = regions(ctx.extra.get("bench") or {})
     unknown = [r for r in args.regions or [] if r not in valid]
     if unknown:
         return ToolResult(status="error", summary=f"Unknown bench region: {', '.join(unknown)}. "

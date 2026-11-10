@@ -64,9 +64,9 @@ def adapter_for(store, protocol_id: str, instruction_id: str, project_id: str) -
     # demonstration when the person requested an experiment.
     if FIXTURE_PROTOCOL not in instruction["text"]:
         raise ValueError(f"The person's instruction must explicitly authorize {FIXTURE_PROTOCOL}; normal experiment requests do not authorize fixtures.")
-    from qumus2.testbench.material_metal_fixture import SyntheticMaterialMetalAdapter
-
-    return SyntheticMaterialMetalAdapter()
+    # The synthetic fixture adapter itself runs in the simulated laboratory
+    # (qumus-simlab); the brain only checks that this protocol is authorised.
+    return FIXTURE_PROTOCOL  # type: ignore[return-value]
 
 
 def preparation_errors(store, project_id: str, chip_id: str) -> list[str]:

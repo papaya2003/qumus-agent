@@ -1,6 +1,6 @@
 """Scripted mock runtime: agents without an API key (spec 15.2).
 
-Replays a scenario (testbench/scenarios/*.yaml). Each user message runs the
+Replays a scenario (agents/scenarios/*.yaml). Each user message runs the
 next turn. Tool calls go through the real ToolGateway, so policy checks, job
 service, StepRunner, SafetyGate and events are all real; only the model's words
 and choices are scripted.
@@ -52,7 +52,7 @@ from qumus2.agents.gateway import ToolGateway
 from qumus2.agents.tooling import ToolResult
 from qumus2.agents.tools.picking import has_images, require_images
 
-SCENARIOS = Path(__file__).resolve().parent.parent / "testbench" / "scenarios"
+SCENARIOS = Path(__file__).resolve().parent / "scenarios"
 _TPL = re.compile(r"\{\{(\w+)((?:\.\w+)+)\}\}")
 _MESSAGE_ID = re.compile(r"\[message id: ([\w-]+)\]")
 #: tool results that leave a job for a person (a parked or failed job)

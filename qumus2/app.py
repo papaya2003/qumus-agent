@@ -1,23 +1,20 @@
-"""Wiring: build the whole system for one mode.
+"""Wiring: build the brain for one run.
 
-    services = build_services(db_path="runs/checks/manual/qumus.db")    # testbench + scripted or SDK
-    services.store / .gate / .jobs / .gateway / .runtime / .driver
+    services = build_services("runs/sim-lab/manual/qumus.db")      # stations.yaml, scripted agents
+    services.store / .jobs / .gateway / .runtime / .driver / .lab
 
-    build_services(..., lab_process=True)   # lab side in its own supervised process
-    build_lab_side(...)                     # what that process runs (qumus2 lab)
-
-Stage 3 adds mode="lab" with devices/real; everything above devices is unchanged.
+The brain never contains the laboratory. Every module (exfoliation, stacking,
+reactor) is a contract v1 station at the address stations.yaml gives, simulated
+(qumus-simlab) or real. `jobs` sends whole jobs to the stations, the record
+mirror copies the stations' runs, steps, samples and events into the brain's
+own store, and `lab` is the web page's read-only view of the stations.
 """
 
 from __future__ import annotations
 
-import asyncio
-import math
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any
 
 from qumus2.agents.driver import ConversationDriver
@@ -26,281 +23,97 @@ from qumus2.agents.openai_credentials import OpenAICredentials, load_openai_cred
 from qumus2.agents.runtime import AgentRuntime
 from qumus2.agents.scripted import ScriptedRuntime, load_scenario
 from qumus2.agents.tooling import default_registry
-from qumus2.config import load_yaml
-from qumus2.core.clock import Clock, SimClock
-from qumus2.flows.context import FlowContext
-from qumus2.runtime.jobs import ThreadJobService
+from qumus2.core.clock import Clock
 from qumus2.runtime.store import RunStore
-from qumus2.safety.gate import SafetyGate
-from qumus2.safety.limits import Limits
-from qumus2.testbench.lab import SimLab, build_sim_lab
-from qumus2.testbench.persist import load_lab_state
+from qumus2.stations import config as stations_config
+from qumus2.stations.config import Stations
+from qumus2.stations.jobs import ContractJobService, connect
+from qumus2.stations.simview import StationLab
 
 
 @dataclass
 class Services:
     store: RunStore
     clock: Clock
-    lab: SimLab
-    gate: SafetyGate
-    jobs: ThreadJobService
+    lab: StationLab
+    jobs: ContractJobService
     gateway: ToolGateway
     runtime: AgentRuntime
     driver: ConversationDriver
     project_id: str
-    supervisor: Any = None  # runtime.supervisor.Supervisor when the lab is its own process
+    stations: Stations
     # the last event before this session (one serve) wrote anything: the UI's
     # "this run" is everything after it, earlier sessions are its History
     session_start: int = 0
-    # simlab.server.SimLabServer when the agent reaches the sim lab through the
-    # contract (build_services(contract_lab=True)); `jobs` is then its client
-    simlab: Any = None
-    _local_close_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
-
-    async def close_local(self, timeout_s: float = 30.0) -> dict[str, Any]:
-        """Close an owned in-process fixture only after its workers have exited.
-
-        Supervised services retain their existing supervisor lifecycle. On an
-        unfinished shutdown the worker service holds this owner, including its
-        temporary image directories and open store, for a later explicit close.
-        """
-        if self.supervisor is not None:
-            raise ValueError("close_local is only for an in-process job service")
-        if type(timeout_s) not in (int, float) or not math.isfinite(timeout_s) or timeout_s < 0:
-            raise ValueError("shutdown timeout must be finite and nonnegative")
-        if not self._local_close_lock.acquire(blocking=False):
-            return {**self._pending_local_close(), "close_pending": True}
-        try:
-            return await self._close_local_owned(timeout_s)
-        finally:
-            self._local_close_lock.release()
+    simlab: Any = None  # stations.launcher.SimLabProcess when this brain started the sim lab
+    _closed: bool = field(default=False, init=False, repr=False)
+    _close_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
     @property
-    def local_jobs(self) -> ThreadJobService:
-        """The in-process job service (inside the sim lab in contract mode)."""
-        return self.simlab.side.jobs if self.simlab is not None else self.jobs
+    def mirror(self) -> Any:
+        return self.jobs.mirror
 
-    def _pending_local_close(self) -> dict[str, Any]:
-        jobs = self.local_jobs
-        stop = jobs._shutdown_stop
-        return {"version": 1, "closed": False, "safe_to_close_resources": False,
-                "manual_execution": not jobs._threads, "admission_stopped": jobs._closing,
-                "unsettled_jobs": sorted(rid for rid, done in list(jobs._done.items()) if not done.is_set()),
-                "alive_workers": [t.name for t in jobs._threads + jobs._retired_threads if t.is_alive()],
-                "stop_pending": stop is not None and stop.is_alive(), "stop_error": jobs._shutdown_stop_error,
-                "unconfirmed_energy_jobs": list(jobs._shutdown_unconfirmed_energy), "evidence_pending": True}
-
-    async def _close_local_owned(self, timeout_s: float) -> dict[str, Any]:
-        if getattr(self, "_local_resources_closed", False):
-            return self._local_shutdown_report
-        if self.simlab is not None:  # agent side first: lease released, servers down
-            self.jobs.close()
-            self.simlab.close()
-        jobs = self.local_jobs
-        jobs._shutdown_owner = self
-        deadline = time.monotonic() + timeout_s
+    async def close(self) -> None:
+        """Release the stations' leases, stop the mirror, close the store (and a sim lab we started)."""
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
         try:
-            report = await asyncio.wait_for(asyncio.to_thread(
-                lambda: jobs.shutdown(max(0., deadline-time.monotonic()))),
-                max(0., deadline-time.monotonic()))
-        except TimeoutError:
-            report = {**self._pending_local_close(), "shutdown_pending": True}
-        self._local_shutdown_report = report
-        if not report["safe_to_close_resources"]:
-            return report
-        try:
-            await asyncio.wait_for(self.runtime.close(), max(0., deadline-time.monotonic()))
-        except Exception as exc:
-            report = {**report, "safe_to_close_resources": False,
-                      "runtime_close_error": f"{type(exc).__name__}: {exc}"}
-            self._local_shutdown_report = report
-            return report
-        if not self.store._lock.acquire(timeout=max(0., deadline-time.monotonic())):
-            report = {**report, "safe_to_close_resources": False, "resource_close_pending": True}
-            self._local_shutdown_report = report
-            return report
-        try:
-            self.store.close()
+            await self.runtime.close()
         finally:
-            self.store._lock.release()
-        for owner in vars(self).values():
-            if isinstance(owner, TemporaryDirectory):
-                owner.cleanup()
-        self._local_resources_closed = True
-        jobs._shutdown_owner = None
-        return report
-
-
-@dataclass
-class LabSide:
-    """Everything below the tools: run store, clock, devices, safety, jobs.
-    In-process by default; `qumus2 lab` runs it as its own process (spec 5.4)."""
-
-    store: RunStore
-    clock: Clock
-    lab: SimLab
-    gate: SafetyGate
-    jobs: ThreadJobService
-
-
-def build_lab_side(db_path: str | Path = ":memory:", *, seed: int | None = None,
-                   testbench_config: dict[str, Any] | None = None,
-                   image_dir: str | Path | None = None,
-                   state_path: str | Path | None = None) -> LabSide:
-    """`image_dir`: where the testbench writes camera pictures; default
-    <db dir>/images for a file database, none for ":memory:".
-    `state_path`: saved sim world of an earlier lab process (testbench/persist.py);
-    when it exists and the database already has a ledger, the world is restored
-    from it and the ledger is left as is (a fresh database is always seeded)."""
-    material_recognition = (testbench_config or {}).get("material_recognition")
-    if material_recognition is not None:
-        from qumus2.core.optical_profiles import V1_MATERIAL_CAPTURE_PROFILE
-
-        if material_recognition != {"backend": "v1_lab_rgb", "capture_profile": V1_MATERIAL_CAPTURE_PROFILE}:
-            raise ValueError("Unknown explicit material recognition/capture profile")
-    clock = SimClock()
-    store = RunStore(db_path, clock=clock)
-    if image_dir is None and str(db_path) != ":memory:":
-        image_dir = Path(db_path).parent / "images"
-    restore = (state_path is not None and Path(state_path).exists()
-               and bool(store.list_samples()))
-    from qumus2.testbench.bench_geometry import (
-        PROFILE,
-        WORKSPACE_META,
-        admit_workspace_geometry,
-        limits_for_bench,
-    )
-
-    try:
-        admit_workspace_geometry(store, testbench_config, restoring=restore)
-    except Exception:
-        store.close()
-        raise
-    lab = build_sim_lab(clock, store=None if restore else store, seed=seed,
-                        config=testbench_config, image_dir=image_dir, reactor_store=store)
-    if restore:
-        load_lab_state(lab, clock, state_path)
-        lab.restore_optical_references(store)
-    if material_recognition is not None:
-        from qumus2.perception.observations import RGBMicroscopeAnalyzer
-        from qumus2.testbench.render import MicroscopeRenderer
-
-        lab.devices.get("microscope").renderer = MicroscopeRenderer(
-            Path(image_dir)/"microscope" if image_dir is not None else None,
-            material_capture_profile=material_recognition["capture_profile"])
-        lab.analyzer = RGBMicroscopeAnalyzer(lab.analyzer)
-    # the person's own 20x photo of each electrode site, taken before the run (v1, #204)
-    from qumus2.testbench.user_reference import add_user_references
-
-    add_user_references(lab, store)
-    # testbench: a person's new-film report stands for the act (testbench/world.py)
-    lab.world.film_reports = lambda sid: len(
-        ((store.get_sample(sid) or {}).get("props") or {}).get("film_reports") or [])
-    if lab.bench.get("geometry_profile") and not restore:
-        store.set_meta(WORKSPACE_META, PROFILE)
-    gate = SafetyGate(lab.devices, Limits.load(limits_for_bench(lab.bench, load_yaml("limits.yaml"))),
-                      clock, sink=lambda k, p: store.emit(k, p),
-                      frames=lab.twin.delta)
-    verification = load_yaml("verification.yaml")
-
-    def ctx_factory(run_id: str, params: dict[str, Any], project_id: str | None) -> FlowContext:
-        run_gate = SafetyGate(lab.devices, gate.limits, clock,
-                              sink=lambda k, p: store.emit(k, p, run_id=run_id),
-                              frames=lab.twin.delta)
-        # share time-based heater state across runs
-        run_gate._heater_on_since = gate._heater_on_since
-        run_gate._heater_last_set = gate._heater_last_set
-        return FlowContext(run_id=run_id, store=store, gate=run_gate, clock=clock,
-                           locator=lab.locator, bench=lab.bench, verification=verification,
-                           params=params, project_id=project_id, analyzer=lab.analyzer)
-
-    jobs = ThreadJobService(store, gate, ctx_factory, bench=lab.bench)
-    # testbench "crash" fault: the job worker dies; restart and recover like a supervisor
-    def recover_after_crash() -> None:
-        # A scheduled simulator callback may arrive after its owner disposes the
-        # local service. It must not restart workers or touch the closed store.
-        with jobs._submit_lock:
-            if not jobs._closing:
-                jobs.recover()
-    lab.faults.on_crash = recover_after_crash
-    return LabSide(store, clock, lab, gate, jobs)
+            self.jobs.close()
+            if self.simlab is not None:
+                self.simlab.close()
+            self.store.close()
 
 
 def build_services(db_path: str | Path = ":memory:", *,
-                   scenario: str | dict[str, Any] = "place_chip_demo",
-                   seed: int | None = None,
-                   testbench_config: dict[str, Any] | None = None,
+                   stations: Stations | str | Path | None = None,
+                   scenario: str | dict[str, Any] = "hallbar_device",
                    step_delay_s: float = 0.0,
                    image_dir: str | Path | None = None,
-                   lab_process: bool = False, run_budget_usd: float | None = None,
+                   run_budget_usd: float | None = None,
                    use_openai: bool = False,
                    pre_send_admission: Any = None, http_max_retries: int = 2,
                    openai_credentials: OpenAICredentials | None = None,
-                   state_path: str | Path | None = None,
-                   contract_lab: bool = False,
-                   simlab_ports: dict[str, int] | None = None) -> Services:
-    """`lab_process=True` runs the lab side (devices, safety, jobs) as a separate
-    process under a supervisor (spec 5.4); needs a file database. The returned
-    `lab` and `jobs` are then proxies with the same methods.
+                   start_simlab: bool = False, simlab_seed: int | None = None,
+                   simlab_args: list[str] | None = None,
+                   client_id: str = "qumus-agent", mirror_poll_s: float = 0.5) -> Services:
+    """`stations`: a Stations, a stations.yaml path, or None (search order in stations/config.py).
 
+    `start_simlab=True` starts qumus-simlab (stations.yaml simlab_dir) when the
+    simulated stations do not answer. `image_dir`: where pictures fetched from the
+    stations are kept; default <db dir>/images.
     `run_budget_usd` caps model spend for this run on top of the per-turn cap.
-    OpenAI uses configured token-rate estimates and a shared persistent ledger.
-
-    `scenario`: a scripted scenario name, path or already loaded dict.
-    `state_path`: a saved sim world to resume (testbench/checkpoint.py), with
-    the run store it was saved with at `db_path` (in-process lab only).
-
-    `contract_lab=True`: the simulated lab is served as contract v1 module
-    services on loopback (qumus2/simlab, ports `simlab_ports`, default
-    8781/8782, 0 = any free port) and the agent reaches it only through them."""
-    # Fail before creating a fresh bench or starting its supervisor.
+    `scenario`: a scripted scenario name, path or already loaded dict."""
     oa_creds = openai_credentials if openai_credentials is not None else (
         load_openai_credentials() if use_openai else None)
     if use_openai and oa_creds is None:
         raise RuntimeError("OpenAI requested: set QUMUS_OPENAI_API_KEY and QUMUS_OPENAI_MODEL in .env")
-    supervisor = None
-    session_start = _last_event_id(db_path)  # before the bench seeds the ledger
+    st = stations if isinstance(stations, Stations) else stations_config.load(stations)
+    if image_dir is None and str(db_path) != ":memory:":
+        image_dir = Path(db_path).parent / "images"
     simlab = None
-    if lab_process and contract_lab:
-        raise ValueError("choose either the lab process or the contract sim lab")
-    if lab_process and state_path is not None:
-        raise ValueError("state_path resumes the in-process testbench; the lab process keeps its own")
-    if lab_process:
-        from qumus2.runtime.remote import RemoteJobService, RemoteLab
-        from qumus2.runtime.supervisor import Supervisor
+    if start_simlab and st.any_sim:
+        from qumus2.stations.launcher import ensure_simlab
 
-        if str(db_path) == ":memory:":
-            raise ValueError("a separate lab process needs a database file")
-        store = RunStore(db_path)
-        supervisor = Supervisor(db_path, store, seed=seed, testbench_config=testbench_config,
-                                image_dir=image_dir)
-        supervisor.start()
-        clock: Clock = store.clock
-        lab: Any = RemoteLab(supervisor)
-        gate: Any = None
-        jobs: Any = RemoteJobService(supervisor)
-    else:
-        side = build_lab_side(db_path, seed=seed, testbench_config=testbench_config,
-                              image_dir=image_dir, state_path=state_path)
-        store, clock, lab, gate, jobs = side.store, side.clock, side.lab, side.gate, side.jobs
-        # This testbench starts from a fresh world and ledger every time, so
-        # jobs the last run left open cannot go on (a real lab, or `serve
-        # --lab-process`, keeps its state and recovers them instead).
-        if closed := jobs.close_leftovers("the testbench was restarted from scratch"):
-            store.emit("notification", {"level": "warn", "text": (
-                f"{len(closed)} job(s) left open by the last run were closed "
-                f"({', '.join(closed)}): this testbench restarts with a fresh bench, so they "
-                "cannot continue. Use serve --lab-process to keep the bench across restarts.")})
-        if contract_lab:
-            from qumus2.simlab.agent_link import connect
-            from qumus2.simlab.server import SimLabServer
-
-            simlab = SimLabServer(side, ports=simlab_ports).start()
-            try:
-                jobs = connect(simlab.urls, store)
-            except Exception:
-                simlab.close()
-                raise
+        data_dir = Path(db_path).parent if str(db_path) != ":memory:" else Path("runs")
+        simlab = ensure_simlab(st, seed=simlab_seed, data_dir=data_dir, extra_args=simlab_args)
+    session_start = _last_event_id(db_path)
+    store = RunStore(db_path, bench=st.bench)
+    try:
+        jobs = connect(st.urls, store, client_id, records_from=st.records_from, image_dir=image_dir,
+                       mirror_poll_s=mirror_poll_s)
+    except Exception:
+        store.close()
+        if simlab is not None:
+            simlab.close()
+        raise
+    view_client = jobs.clients.get(st.records_from)
+    lab = StationLab(store, view_client, simulated=st.modules[st.records_from].kind == "sim",
+                     images=jobs.mirror.images)
+    lab.refresh_bench()
     projects = store.list_projects()
     project_id = projects[0]["id"] if projects else store.create_project("demo")
     gateway = ToolGateway(default_registry(), store, jobs, project_id=project_id, bench=lab.bench)
@@ -316,10 +129,11 @@ def build_services(db_path: str | Path = ":memory:", *,
         runtime = ScriptedRuntime(gateway, scenario if isinstance(scenario, dict) else load_scenario(scenario),
                                   step_delay_s=step_delay_s)
     store.emit("notification", {"level": "info", "text": f"agents: {runtime.mode} mode"})
+    store.emit("stations.connected", st.to_dict())
     driver = ConversationDriver(store, runtime, jobs)
     store.begin_session(session_start)
-    return Services(store, clock, lab, gate, jobs, gateway, runtime, driver, project_id,
-                    supervisor, session_start, simlab)
+    return Services(store, store.clock, lab, jobs, gateway, runtime, driver, project_id, st,
+                    session_start, simlab)
 
 
 def _last_event_id(db_path: str | Path) -> int:

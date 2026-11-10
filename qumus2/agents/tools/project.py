@@ -522,12 +522,11 @@ class FilmArgs(BaseModel):
             "so the stamp counts as fresh again. Cite their message.",
             agents={"orchestrator"}, kind="state", requires=("person_reported_film",))
 async def report_new_film(args: FilmArgs, ctx: ToolContext) -> ToolResult:
-    from qumus2.config import load_yaml
     from qumus2.records.stamps import FilmReportError
     from qumus2.records.stamps import report_new_film as record
 
     try:
-        rec = record(ctx.store, load_yaml("bench.yaml"), args.stamp_id, by=ctx.agent,
+        rec = record(ctx.store, ctx.extra.get("bench") or {}, args.stamp_id, by=ctx.agent,
                      via="chat", instruction_id=args.instruction_id, film_type=args.film_type)
     except FilmReportError as e:
         return ToolResult(status="error", summary=str(e))
@@ -728,7 +727,7 @@ class MetalCoatingArgs(BaseModel):
             "The person supplies metal and thickness_nm; geometry requires microscope evidence. No deposition is performed.",
             agents={"orchestrator"}, kind="state", refs={"chip_id": "chip"})
 async def record_metal_coating(args: MetalCoatingArgs, ctx: ToolContext) -> ToolResult:
-    from qumus2.flows.bench import slot_station
+    from qumus2.core.bench import slot_station
 
     ins = ctx.store.get_instruction(args.instruction_id)
     chip = ctx.store.get_sample(args.chip_id)

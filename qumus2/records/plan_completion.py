@@ -102,10 +102,29 @@ STATUS_PRESERVING_STORAGE_FLOWS = frozenset({
 })
 
 
+#: Where exfoliate_chips stores its chips (the station's exfoliation flow).
+STORE_BOARD = "middle_storage"
+#: exfoliate_chips parameters as the station stores them with the run.
+EXFOLIATION_FIELDS = ("material", "num_chips", "chip_ids", "prepare_mother_tape", "target_temp_c", "dwell_s",
+                      "num_massages", "press_depth_mm", "peel_speed", "peel_angle_deg", "carrier_id",
+                      "carrier_slot", "home_slots", "store_slots")
+
+
+def _exfoliation_params(raw: dict):
+    """The executed exfoliation's own parameters, read from the station's run row."""
+    from types import SimpleNamespace
+
+    from qumus2.core.materials import normalize_material_code
+
+    material = normalize_material_code(raw.get("material") or "")
+    if not material:
+        raise ValueError("material is required")
+    return SimpleNamespace(material=material, num_chips=int(raw.get("num_chips", 1)),
+                           chip_ids=list(raw.get("chip_ids") or []), carrier_id=raw.get("carrier_id"))
+
+
 def flow_storage_contracts() -> dict[str, dict]:
     """Registered storage semantics, not an allocation, reservation or observation."""
-    from qumus2.flows.library.exfoliation import STORE_BOARD
-
     search = {"sample_kind": "chip", "mode": "home_at_submission", "resolved_parameter": "home_slot",
               "destination": "Chip location when this search/revisit is submitted, after earlier work finishes.",
               "fallback": "Another free chip slot in that home slot's storage station; updates home_slot.",
@@ -149,11 +168,10 @@ def invalid_flow_sample_locations(store, step: dict) -> list[dict]:
 
 
 def registered_flow_names() -> list[str]:
-    """Load the same registry used by job submission; never infer flow aliases."""
-    import qumus2.flows.library  # noqa: F401 - registers built-in flows
-    from qumus2.flows.flow import FLOWS
+    """The flows the connected stations offer (their contract describe); never infer aliases."""
+    from qumus2.stations.catalog import CATALOG
 
-    return sorted(FLOWS)
+    return CATALOG.flow_names()
 
 
 def executable_flow_names(owner: str, registry=None) -> list[str]:
@@ -342,7 +360,6 @@ def human_sample_binding_conflict(store, project_id: str, source_id: str, target
 def _correct_exfoliation_output(store, project_id: str, previous: dict, current: dict) -> list[dict]:
     """Correct a model's carrier/chip confusion using this step's one real output."""
     from qumus2.core.materials import normalize_material_code as norm
-    from qumus2.flows.library.exfoliation import ExfoliationParams
 
     if (previous.get("owner") != "hands" or previous.get("status") not in ("pending", "failed")
             or current.get("status") != "pending" or previous.get("id") != current.get("id")
@@ -389,7 +406,7 @@ def _correct_exfoliation_output(store, project_id: str, previous: dict, current:
     if condition.get("location") is not None or run["flow"] != "exfoliate_chips" or run["status"] != "succeeded":
         return []
     try:
-        params = ExfoliationParams.model_validate(run["params"])
+        params = _exfoliation_params(run["params"])
     except ValueError:
         return []
     if params.num_chips != 1 or len(params.chip_ids) != 1 or params.carrier_id != condition["sample_id"]:
@@ -409,7 +426,7 @@ def _correct_exfoliation_output(store, project_id: str, previous: dict, current:
     if any(r["id"] != run["id"] and r["flow"] == "exfoliate_chips"
            and target_id in r["params"].get("chip_ids", []) for r in store.list_runs()):
         return []
-    resolved = {k: v for k, v in run["params"].items() if k in ExfoliationParams.model_fields}
+    resolved = {k: v for k, v in run["params"].items() if k in EXFOLIATION_FIELDS}
     resolved["material"] = params.material
     # Purpose is an admitted planning label, not a physical parameter. Arbitrary
     # metadata must never replace the executed recipe or legitimize unknown args.
@@ -605,12 +622,14 @@ def unmet_reactor_outcome(store, bench: dict, value: dict | None, *, after_event
         if not isinstance(p.get(key), (int, float)) or isinstance(p.get(key), bool) or not math.isfinite(p[key]):
             failures.append(f"{key} has no finite measured readback")
     if not failures and wanted.disposition == "cold_storage":
-        from qumus2.safety.limits import Limits
+        from qumus2.config import load_yaml
 
-        limit = next((x for x in Limits.load().reactor_interlocks if x.stage == "reactor_slot"), None)
+        # The reactor station's cold-access envelope (config/reactor-access.yaml).
+        limit = next((x for x in load_yaml("reactor-access.yaml").get("reactor_interlocks", [])
+                      if x.get("stage") == "reactor_slot"), None)
         if limit is None:
             failures.append("reactor access limits are not configured")
-        elif p["temperature_c"] > limit.access_max_celsius or p["flow_sccm"] > limit.access_max_flow_sccm:
+        elif p["temperature_c"] > limit["access_max_celsius"] or p["flow_sccm"] > limit["access_max_flow_sccm"]:
             failures.append("reactor has not reached the configured cold-access conditions")
     elif not failures:
         expected_t = (wanted.temperature_target_c if wanted.temperature_target_c is not None else

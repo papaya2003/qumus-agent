@@ -1,11 +1,8 @@
-# Architecture: the agent and the lab windows
+# Architecture: the brain and the stations
 
-> **中文摘要：** agent 只做“指挥”：想做什么、按什么顺序、出错怎么办。仪器怎么动、动得安不安全，由各模块自己管。
-> 两者之间只有一种对话方式：contract v1 窗口规则（读说明、读状态、下命令、停止、租约、事件）。
-> 仿真实验室也走同一个窗口，所以从仿真换到真机，agent 这边不用改。
-
-This page is the short map. The detailed agent and simulation contracts inherited
-from qumus-v2 (tools, jobs, steps, events, UI) are in [sim-contracts.md](sim-contracts.md).
+> **中文摘要：** qumus-agent 只做“指挥”（大脑）：想做什么、按什么顺序、出错怎么办。仪器怎么动、动得安不安全，由各个工作站自己管。
+> 两边各有自己的数据库，只通过 HTTP（contract v1）说话。模拟实验室 qumus-simlab 和真实实验室走同一套接口，
+> 在同一台电脑或不同电脑上都一样，只是 stations.yaml 里的地址不同。
 
 ## 1. Who does what
 
@@ -13,69 +10,77 @@ from qumus-v2 (tools, jobs, steps, events, UI) are in [sim-contracts.md](sim-con
  person ──▶ web page (qumus2/ui) ──▶ agent team (qumus2/agents)
                                          │ tool call, checked by ToolGateway + policy
                                          ▼
-                              JobService interface (submit / wait / stop ...)
-                    ┌────────────────────┴────────────────────┐
-         in-process testbench (legacy demo)        ContractJobService (qumus2/simlab/agent_link.py)
-                                                          │ ContractClient + LeaseKeeper (qumus2/contract)
-                                                          ▼ HTTP, contract v1
-                              ┌────────────────┬──────────┴───────┬─────────────────┐
-                        exfoliation       stacking            reactor services   (more windows)
-                     (qumus-lab or sim) (qumus-lab or sim)   (qumus2/reactor)
+                 ctx.jobs = ContractJobService (qumus2/stations/jobs.py)      ctx.store = brain RunStore
+                    │ put_records, job commands, job_* controls, stop             ▲
+                    │ ContractClient + LeaseKeeper (qumus2/contract)              │ record mirror
+                    ▼ HTTP, contract v1                                           │ (qumus2/stations/mirror.py)
+        ┌───────────────────┬───────────────────┬──────────────────┐             │
+   exfoliation          stacking             reactor        GET /api/records ─────┘
+   (sim or real)        (sim or real)        (sim or real)  GET /api/images/<id>
 ```
 
-- **Agent side (this repo)** decides *what* to do: plans, flake choice, device design,
-  recovery choices. It never sends raw coordinates; it asks a module for a named
-  action (`go_to_point {point}`, `heat {device, target_c, timeout_s}`, a whole job).
-- **Module side** decides *how*: drivers, named points from config, SafetyGate limits,
-  closed-loop steps, heater timeouts. On real hardware that is qumus-lab on the lab PC;
-  for simulation it is `qumus2/simlab` over the qumus-v2 testbench.
+- **Brain (this repo)** decides *what* to do: plans, flake choice, device design,
+  recovery choices. It asks a station for a whole job by name (`search_chip`,
+  `stack_device`, ...) and never sends raw device motion.
+- **Stations** decide *how*: drivers, named points, SafetyGate limits, closed-loop
+  steps, heater timeouts, and stop motion when the brain's lease lapses (3 s;
+  the brain renews every second).
 
-## 2. The window rules (contract v1)
+The brain never imports laboratory code; a test (`tests/test_stations.py`) checks it.
 
-Shared spec: project notes `night-20261108/contract-v1-qumus.md` (wire format of the
-reactor's ADR 0001 plus Qumus rules). Every window offers:
+## 2. Two stores, one feed
 
-| Call | Meaning |
+| Owner | Records |
 | --- | --- |
-| `GET /api/describe` | who am I, which devices (fields + units), which commands (`any_client`, `motion`, `local_only`) |
-| `GET /api/state` | busy, locked, fault, lease, last command, device values |
-| `POST /api/command` | `{"action": name, ...params}` → 202; motion needs the lease |
-| `POST /api/stop` | anyone, no lease, safe to repeat |
-| `POST /api/heartbeat` / `renew` / `release` | one controller at a time; 3 s lease; lease lost during motion = stop |
-| `GET /api/events?since=` | ordered history of what the window did |
-| `POST /api/unlock` | a person at the lab computer clears `locked` (Qumus rule) |
+| Station (lab) | physical world, runs and steps of jobs, samples it creates or moves, reservations, lab events, pictures |
+| Brain | projects, plans, instructions, experience, agent events, budget |
+| Both | `sample`, `reservation`, project `state` that jobs read |
 
-Rules the agent relies on: a motion command with no answer locks the window and is
-never retried automatically; heaters always carry a timeout; `local_only` actions
-(jog, raw switches) exist only for the debug page and probe scripts on the lab PC;
-there is no human-approval gate per run.
+- **lab → brain**: `GET /api/records?since=<seq>` on the `records_from` station
+  (default stacking). Each change is `{seq, table, key, row}`; `row` is the RunStore
+  dict shape, `null` means deleted. Every page carries `lab_id`; a new `lab_id` (a
+  fresh simulated lab) clears the mirrored samples/reservations and starts at 0.
+  Lab events are re-emitted in the brain store with `lab_event_id`.
+- **pictures**: a row refers to a picture as `"qumus-image:<image_id>"`. The mirror
+  downloads `GET /api/images/<image_id>` into `<run folder>/images/` and writes the
+  local path; pushing maps it back.
+- **brain → lab**: command `put_records` (any client, not motion) with the brain's
+  changed samples, all projects (`{id, name, state}`) and instructions, sent before
+  every job command, retry, resume and `complete_experiment`.
+- After a job command answers `run_id`, the brain waits until that run row arrives
+  in the feed, so tools can read it at once. `wait_job` reads the mirrored run/step rows.
 
-## 3. The sim lab
+Exact wire shapes: `notes/agent-brain-20261110/brain-simlab-interface.md` (project notes).
 
-`qumus2 simlab` (or `serve --contract-lab`) builds the qumus-v2 simulated bench (the v1-linked
-Hall-bar laboratory, the only bench any entry point uses) once and
-serves it as two windows, `exfoliation` (:8781) and `stacking` (:8782). Each window lists
-only its own devices; the simulated table has one overview camera, listed by both.
-Besides the basic actions, each window offers its module's whole jobs as actions
-(`exfoliate_chips`; `place_chip_on_transfer_stage`, `search_chip`, `revisit_chip`,
-`stack_device`, `cool_experiment_stages`, `inspect_bench`) and job controls
-(`job_cancel`, `job_retry`, `job_resume`, ...). On real hardware these jobs become
-qumus-lab level-4 actions after the L3 measurements.
+## 3. stations.yaml
 
-Sim-only shortcut: the agent and the sim lab share one run-store file, so the agent
-reads job progress, samples and images from it. With qumus-lab the agent will read the
-same facts from module state and events instead ([adaptation plan](adaptation-plan.md), step 6).
+```yaml
+simlab_dir: ../qumus-simlab      # started by `serve` when local sim stations do not answer
+records_from: stacking
+modules:
+  exfoliation: {url: "http://127.0.0.1:8781/", kind: sim}
+  stacking:    {url: "http://127.0.0.1:8782/", kind: sim}
+  reactor:     {url: "http://127.0.0.1:8783/", kind: sim}
+```
 
-## 4. Where things are
+Same computer or another computer: only `url` changes (`http://192.168.x.y:8782/`
+for a LAN station, or `http://127.0.0.1:18782/` for the local end of an SSH tunnel).
+`kind: real` marks a real station (the page shows it; learning stays off until
+recording provenance is verified). Extra keys stay with the module for its adapter
+(e.g. the reactor console: `adapter: console, session: qumus`).
 
-| Path | Role |
-| --- | --- |
-| `qumus2/agents/` | team, prompts, skills, tools, ToolGateway, model runtimes, budget |
-| `qumus2/ui/` | live page, History, recordings |
-| `qumus2/runtime/store.py` | projects, plans, runs, events (SQLite) |
-| `qumus2/contract/` | contract v1 client ([contract-client.md](contract-client.md)) |
-| `qumus2/reactor/` | reactor window adapter ([reactor-gaps.md](reactor-gaps.md)) |
-| `qumus2/simlab/` | sim lab windows and the agent's `ContractJobService` |
-| `qumus2/testbench/`, `devices/sim/`, `flows/`, `safety/`, `perception/` | the simulation behind the sim lab |
-| `qumus2/runtime/labproc.py`, `rpc.py`, `remote.py`, `supervisor.py` | legacy private lab process; retired when the windows cover it |
-| `qumus2/devices/real/` | legacy in-process reactor adapters; retired, the reactor services own those devices |
+## 4. The page
+
+The web page reads the laboratory through the `records_from` station:
+`GET /api/sim/layout` (bench + regions), `/api/sim/bench_state` (devices, objects,
+twin, stamp, faults), `/api/sim/preview/<camera>`, `/api/sim/faults` (simulated lab
+only). The bench description is kept in the brain store (`station_bench`) so tools
+and History work while the station is offline. `/api/windows` and `/api/stations`
+show each station's URL, sim/real and whether it answers.
+
+## 5. Tests
+
+`qumus2/stations/fake_lab.py` serves three fake stations on loopback that share one
+lab-side store and finish every job at once with an outcome the test chooses. The
+`services` fixture is the brain on that fake Hall-bar laboratory. Tests that need
+simulated physics live with qumus-simlab and the integration run.

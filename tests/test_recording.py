@@ -25,7 +25,6 @@ def _record(tmp_path, monkeypatch, scenario="place_chip_demo"):
     db = tmp_path / "run" / "qumus.db"
     s = build_services(db, scenario=scenario, seed=2)
     rec = attach_recorder(s, poll_s=0.02, bench_every_s=0.05)
-    s.lab.faults.inject("next_placement", {"dx": 2.0, "dy": -1.0, "drot": 2.0})
     s.store.emit("fault.injected", {"fault": "next_placement", "params": {"dx": 2.0}})
     # something secret-looking and a home path, as a careless tool might log them
     s.store.emit("notification", {"level": "info", "text": "key sk-test-0123456789abcdefghij "
@@ -58,7 +57,6 @@ def test_recorder_and_export(tmp_path, monkeypatch):
     text = (out / "recording.json").read_text()
     assert "sk-test" not in text and "/Users/someone" not in text
     assert "[redacted]" in text
-    assert any(e["kind"] == "step.corrected" for e in rec["events"])
     assert check_recording(out) == []
     (out / imgs[0]).unlink()
     assert any("photo" in x for x in check_recording(out))

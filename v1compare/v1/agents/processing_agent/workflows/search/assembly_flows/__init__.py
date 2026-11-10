@@ -1,1 +1,0 @@
-from .assembly_search_chip import AssemblySearchChip

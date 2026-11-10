@@ -91,29 +91,19 @@ def heal_wal(database: Path) -> bool:
 
 
 def workspace_mismatch(database: Path, bundle: Path) -> str | None:
-    """Why the existing workspace cannot open with this code and target, or None."""
+    """Why the existing workspace cannot open with this code, or None.
+
+    The brain's store no longer holds the laboratory (the simulated lab keeps its
+    own store in qumus-simlab), so only a store made by the old in-process
+    testbench is refused: it mixed laboratory state into the brain's records."""
+    del bundle
     if not database.exists():
         return None
-    from qumus2.cli import _serve_config
-    from qumus2.testbench.bench_geometry import PROFILE, WORKSPACE_META
-
     with sqlite3.connect(database.as_uri() + '?mode=ro&immutable=1', uri=True) as connection:
-        row = connection.execute('SELECT value FROM meta WHERE key = ?', (WORKSPACE_META,)).fetchone()
-        occupied = any(connection.execute(f'SELECT 1 FROM {table} LIMIT 1').fetchone()
-                       for table in ('sample', 'run', 'project'))
-    # The same rule as bench_geometry.admit_workspace_geometry: an occupied
-    # workspace opens only as an exact checkpoint of this geometry.
-    if row is not None and row[0] != PROFILE:
-        return f'it was made for bench geometry {row[0]}, this code uses {PROFILE}'
-    if occupied and row is None:
-        return 'it predates the recorded bench geometry'
-    if occupied and not database.with_suffix('.testbench.pkl').exists():
-        return 'its saved laboratory state is missing'
-    try:
-        _serve_config(argparse.Namespace(db=str(database),
-                                         target_bundle=str(bundle)), prepare=False)
-    except ValueError as error:
-        return str(error)
+        row = connection.execute("SELECT value FROM meta WHERE key = 'simulation_bench_geometry'").fetchone() \
+            if connection.execute("SELECT 1 FROM sqlite_master WHERE name = 'meta'").fetchone() else None
+    if row is not None or database.with_suffix('.testbench.pkl').exists():
+        return 'it was made by the old in-process testbench, before the laboratory became its own program'
     return None
 
 
@@ -513,7 +503,10 @@ def main() -> None:
     except (ValueError, OSError) as error:
         print('Startup blocked: invalid owner target bundle: ' + str(error))
         raise SystemExit(2) from None
-    command = [sys.executable, '-m', 'qumus2', 'serve', '--openai', '--lab-process',
+    # The simulated laboratory (qumus-simlab) is started by `serve` when the
+    # stations in stations.yaml are simulated and not running; the operator's
+    # target goes to it.
+    command = [sys.executable, '-m', 'qumus2', 'serve', '--openai',
                '--db', DATABASE, '--budget', '40', '--host', HOST, '--port', str(PORT),
                '--target-bundle', str(bundles[0]),
                '--stop-when-closed', str(STOP_WHEN_CLOSED_S)]

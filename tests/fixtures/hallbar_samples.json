@@ -1,0 +1,495 @@
+[
+ {
+  "id": "carrier_gr_01",
+  "kind": "carrier",
+  "location": "left_slide_1",
+  "status": "available",
+  "props": {
+   "material": "Gr",
+   "size_mm": [
+    75.0,
+    25.0
+   ],
+   "simulation_identity": {
+    "source": "testbench_config.initial_samples",
+    "sample_id": "carrier_gr_01",
+    "material": "Gr"
+   }
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "carrier_hbn_01",
+  "kind": "carrier",
+  "location": "left_slide_2",
+  "status": "available",
+  "props": {
+   "material": "hBN",
+   "size_mm": [
+    75.0,
+    25.0
+   ],
+   "simulation_identity": {
+    "source": "testbench_config.initial_samples",
+    "sample_id": "carrier_hbn_01",
+    "material": "hBN"
+   }
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_001",
+  "kind": "chip",
+  "location": "left_chip_1",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "size_mm": [
+    26.46,
+    33.25
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_002",
+  "kind": "chip",
+  "location": "left_chip_2",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "size_mm": [
+    27.95,
+    34.0
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_003",
+  "kind": "chip",
+  "location": "left_chip_3",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "size_mm": [
+    28.88,
+    35.87
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_004",
+  "kind": "chip",
+  "location": "left_chip_4",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "size_mm": [
+    28.26,
+    34.1
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_005",
+  "kind": "chip",
+  "location": "left_chip_5",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "stock_source": "declared_nine_blank_chip_lab_stock_v1",
+   "size_mm": [
+    28.0,
+    33.36
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_006",
+  "kind": "chip",
+  "location": "left_chip_6",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "stock_source": "declared_nine_blank_chip_lab_stock_v1",
+   "size_mm": [
+    26.47,
+    33.04
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_007",
+  "kind": "chip",
+  "location": "left_chip_7",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "stock_source": "declared_nine_blank_chip_lab_stock_v1",
+   "size_mm": [
+    27.69,
+    33.34
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_008",
+  "kind": "chip",
+  "location": "left_chip_8",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "stock_source": "declared_nine_blank_chip_lab_stock_v1",
+   "size_mm": [
+    28.19,
+    36.67
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_009",
+  "kind": "chip",
+  "location": "left_chip_9",
+  "status": "bare",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "stock_source": "declared_nine_blank_chip_lab_stock_v1",
+   "size_mm": [
+    26.35,
+    33.93
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "chip_e01",
+  "kind": "chip",
+  "location": "right_chip_1",
+  "status": "patterned",
+  "props": {
+   "substrate": "SiO2/Si 285nm",
+   "electrodes": "eight existing source/drain and voltage contact tips",
+   "device_design_target": {
+    "version": "hallbar-target-v1",
+    "source": "simulated_design",
+    "reference": "Declared synthetic eight-contact transfer wafer v1; dimensions are not measured laboratory geometry",
+    "units": "mm",
+    "frame": "chip_bottom_left_axes",
+    "size_mm": [
+     10.0,
+     10.0
+    ],
+    "contacts": [
+     {
+      "id": "source",
+      "role": "source",
+      "points_mm": [
+       [
+        4.998,
+        5.018
+       ],
+       [
+        5.002,
+        5.018
+       ],
+       [
+        5.002,
+        5.021999999999999
+       ],
+       [
+        4.998,
+        5.021999999999999
+       ]
+      ]
+     },
+     {
+      "id": "drain",
+      "role": "drain",
+      "points_mm": [
+       [
+        4.998,
+        4.978000000000001
+       ],
+       [
+        5.002,
+        4.978000000000001
+       ],
+       [
+        5.002,
+        4.982
+       ],
+       [
+        4.998,
+        4.982
+       ]
+      ]
+     },
+     {
+      "id": "voltage_left_1",
+      "role": "voltage_left_1",
+      "points_mm": [
+       [
+        4.988,
+        4.988
+       ],
+       [
+        4.992,
+        4.988
+       ],
+       [
+        4.992,
+        4.992
+       ],
+       [
+        4.988,
+        4.992
+       ]
+      ]
+     },
+     {
+      "id": "voltage_left_2",
+      "role": "voltage_left_2",
+      "points_mm": [
+       [
+        4.988,
+        4.998
+       ],
+       [
+        4.992,
+        4.998
+       ],
+       [
+        4.992,
+        5.002
+       ],
+       [
+        4.988,
+        5.002
+       ]
+      ]
+     },
+     {
+      "id": "voltage_left_3",
+      "role": "voltage_left_3",
+      "points_mm": [
+       [
+        4.988,
+        5.008
+       ],
+       [
+        4.992,
+        5.008
+       ],
+       [
+        4.992,
+        5.012
+       ],
+       [
+        4.988,
+        5.012
+       ]
+      ]
+     },
+     {
+      "id": "voltage_right_1",
+      "role": "voltage_right_1",
+      "points_mm": [
+       [
+        5.008,
+        4.988
+       ],
+       [
+        5.012,
+        4.988
+       ],
+       [
+        5.012,
+        4.992
+       ],
+       [
+        5.008,
+        4.992
+       ]
+      ]
+     },
+     {
+      "id": "voltage_right_2",
+      "role": "voltage_right_2",
+      "points_mm": [
+       [
+        5.008,
+        4.998
+       ],
+       [
+        5.012,
+        4.998
+       ],
+       [
+        5.012,
+        5.002
+       ],
+       [
+        5.008,
+        5.002
+       ]
+      ]
+     },
+     {
+      "id": "voltage_right_3",
+      "role": "voltage_right_3",
+      "points_mm": [
+       [
+        5.008,
+        5.008
+       ],
+       [
+        5.012,
+        5.008
+       ],
+       [
+        5.012,
+        5.012
+       ],
+       [
+        5.008,
+        5.012
+       ]
+      ]
+     }
+    ],
+    "receiving_layers_top_first": []
+   },
+   "layers_top_first": [],
+   "size_mm": [
+    10.0,
+    10.0
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "reactor_chip_01",
+  "kind": "chip",
+  "location": "reactor_chip_slot_1",
+  "status": "bare",
+  "props": {
+   "reactor_substrate": true,
+   "size_mm": [
+    2.5,
+    10.0
+   ],
+   "preparation": "synthetic seed representing a manually cut chip",
+   "image_source": "simulated"
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "reactor_chip_02",
+  "kind": "chip",
+  "location": "reactor_chip_slot_2",
+  "status": "bare",
+  "props": {
+   "reactor_substrate": true,
+   "size_mm": [
+    2.5,
+    10.0
+   ],
+   "preparation": "synthetic seed representing a manually cut chip",
+   "image_source": "simulated"
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "reactor_chip_03",
+  "kind": "chip",
+  "location": "reactor_chip_slot_3",
+  "status": "bare",
+  "props": {
+   "reactor_substrate": true,
+   "size_mm": [
+    2.5,
+    10.0
+   ],
+   "preparation": "synthetic seed representing a manually cut chip",
+   "image_source": "simulated"
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "reactor_chip_04",
+  "kind": "chip",
+  "location": "reactor_chip_slot_4",
+  "status": "bare",
+  "props": {
+   "reactor_substrate": true,
+   "size_mm": [
+    2.5,
+    10.0
+   ],
+   "preparation": "synthetic seed representing a manually cut chip",
+   "image_source": "simulated"
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "stamp_01",
+  "kind": "stamp",
+  "location": "right_stamp_1",
+  "status": "fresh",
+  "props": {
+   "film": "PC",
+   "size_mm": [
+    75.0,
+    25.0
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "stamp_02",
+  "kind": "stamp",
+  "location": "right_stamp_2",
+  "status": "fresh",
+  "props": {
+   "film": "PC",
+   "size_mm": [
+    75.0,
+    25.0
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "stamp_03",
+  "kind": "stamp",
+  "location": "right_stamp_3",
+  "status": "fresh",
+  "props": {
+   "film": "PC",
+   "size_mm": [
+    75.0,
+    25.0
+   ]
+  },
+  "updated_at": 1800000000.0
+ },
+ {
+  "id": "tape",
+  "kind": "tape",
+  "location": "exfoliator",
+  "status": "fresh",
+  "props": {
+   "material": null,
+   "uses": 0,
+   "roll_left_mm": 3000.0
+  },
+  "updated_at": 1800000000.0
+ }
+]

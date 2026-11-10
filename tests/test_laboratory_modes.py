@@ -164,12 +164,13 @@ def test_mode_api_reports_real_setup_and_preserves_original_runs(services):
         capability = client.get("/api/laboratory").json()
         assert capability == client.get("/api/health").json()["laboratory"]
         assert capability["mode"] == "virtual"
-        assert capability["backend"] == "qumus2.sim"
+        assert capability["backend"] == "stations"
+        assert {st["module"] for st in capability["stations"]} == {"exfoliation", "stacking", "reactor"}
         assert not capability["learning"]["enabled"]
         assert capability["modes"][1]["available"] is False
         response = client.post("/api/laboratory/mode", json={"mode": "real"})
         assert response.status_code == 409
-        assert "physical device adapters" in response.json()["detail"]
+        assert "stations.yaml" in response.json()["detail"]
         assert client.post("/api/laboratory/mode", json={"mode": "virtual"}).status_code == 200
         assert client.get("/api/experience").json()["learning"]["status"] == "disabled_virtual"
         assert services.store.bench == services.store.get_run(rid)["bench"] == "sim"

@@ -227,7 +227,7 @@ Those historical billing observations do not qualify the current Hall-bar
 campaign. Its first Astra recording has an inclusive estimated USD100 cap,
 including qualification and failed/unknown requests, with input/output rates
 of USD10/USD50 per million and no assumed cached-input discount. Its separate
-finite admission checks are described in [sim-contracts.md](sim-contracts.md#current-hall-bar-recording-contract).
+finite admission checks are described in qumus-simlab's simulation contracts.
 The remaining fourteen recordings have no execution authorization or budget.
 
 Settings displays a separate cost estimate calibrated from a private
@@ -267,15 +267,13 @@ The following acceptance commands spend API credit and require the owner's
 authorization and configured budget limits:
 
 ```sh
-python scripts/check_model.py connect
-python scripts/check_model.py place --askew
-python scripts/check_model.py flake
-python scripts/check_model.py device
-python scripts/check_model.py device --fault stamp_torn
+qumus2 serve --openai --budget 15 --seed 3 --db runs/sim-lab/<name>/qumus.db --no-browser
+curl -X POST http://127.0.0.1:8765/api/messages -H 'Content-Type: application/json' \
+  -d '{"text": "Make an hBN/graphene Hall bar on the eight-electrode chip chip_e01, starting from the tapes."}'
 ```
 
-Live checks are opt-in, capped, and write `summary.json` plus a replay under
-`runs/checks/model/`. Review the summary's explicit pass/fail flag and actual
+Live runs are opt-in and capped; the brain records everything in its run store and
+`qumus2 export` makes a replay. Review the summary's explicit pass/fail flag and actual
 sample/job records. A model's success sentence is not an acceptance test.
 Offline tests run the real SDK with deterministic model responses; they
 validate the integration, not live scientific judgement.

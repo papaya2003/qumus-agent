@@ -333,12 +333,17 @@ def export_recording(db_path: str | Path, out_dir: str | Path, *, title: str = "
     testbench replayed (`images/microscope/replay/`, v1 lab photos) are lab
     data: the export refuses them unless `allow_lab_photos`. `extra_roots`:
     other run folders whose photos the records may name (a run resumed from a
-    save point keeps the earlier photos in the original workspace)."""
+    save point keeps the earlier photos in the original workspace); the
+    resumed_from.json chain next to the database is followed automatically."""
     from qumus2.runtime.store import RunStore
 
     db_path = Path(db_path)
     data_root = db_path.parent.resolve()
+    from qumus2.stations.mirror import earlier_workspaces
+
     roots = [data_root, *(Path(r).resolve() for r in extra_roots)]
+    # a resumed run names photos that stay in the runs it was resumed from
+    roots += [w for w in earlier_workspaces(data_root) if w not in roots]
 
     def root_of(p: Path) -> Path | None:
         return next((r for r in roots if p.is_relative_to(r)), None)

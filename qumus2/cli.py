@@ -120,7 +120,7 @@ def _export(args: argparse.Namespace) -> None:
         starts = [t["id"] for t in read_timeline(timeline_path(args.db)) if t.get("start")]
         after = starts[-1] if starts else 0
     out = export_recording(args.db, args.out, title=args.title, description=args.description,
-                           after_id=after)
+                           after_id=after, extra_roots=tuple(args.extra_root or ()))
     print(f"exported to {out}; watch it in Qumus under History")
 
 
@@ -188,6 +188,9 @@ def main(argv: list[str] | None = None) -> None:
     ep.add_argument("--db", default="runs/sim-lab/manual/qumus.db")
     ep.add_argument("--out", required=True, help="output folder, e.g. recordings/my-run")
     ep.add_argument("--title", default="")
+    ep.add_argument("--extra-root", action="append", default=[],
+                    help="another run folder whose photos the records name (resume chains "
+                         "are followed automatically)")
     ep.add_argument("--description", default="")
     ep.add_argument("--last-session", action="store_true",
                     help="only events since the last `serve` start")

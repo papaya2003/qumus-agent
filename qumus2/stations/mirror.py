@@ -51,10 +51,9 @@ def _j(value: Any) -> str:
     return json.dumps(value, default=str)
 
 
-def _earlier_image_roots(root: Path | None) -> tuple[Path, ...]:
-    """<workspace>/images of each run in the resumed_from.json chain (savepoint.py)."""
+def earlier_workspaces(folder: Path | None) -> tuple[Path, ...]:
+    """Run folders of the resumed_from.json chain (savepoint.py), nearest first."""
     out: list[Path] = []
-    folder = root.parent if root is not None else None
     seen = set()
     while folder is not None and folder not in seen and len(out) < 50:
         seen.add(folder)
@@ -65,8 +64,13 @@ def _earlier_image_roots(root: Path | None) -> tuple[Path, ...]:
         if not workspace:
             break
         folder = Path(workspace).resolve()
-        out.append(folder / "images")
+        out.append(folder)
     return tuple(out)
+
+
+def _earlier_image_roots(root: Path | None) -> tuple[Path, ...]:
+    """<workspace>/images of each run in the resumed_from.json chain."""
+    return tuple(w / "images" for w in earlier_workspaces(root.parent if root is not None else None))
 
 
 class ImageCache:

@@ -7,13 +7,15 @@ reactor 仓库在 2026-11-09 接受了 ADR 0010，取代 ADR 0008：
 - **没有人工审批了，也没有 MCP 网关（8773 已删除）。** agent 用 `labctl` 直接操作仪器，控制权由 Lab Console 统一管理
   （Console 每 1 秒替 agent 续约，agent 10 分钟没有调用就自动释放）。→ **G1 由 reactor 负责人解决。**
 - **Lab Console 的接口通过 VPN 的 8080 端口开放**（`http://100.64.0.1:8080/lab/`，单端口代理转发 `/lab/`）。
-  所以 Mac 只要连上 LarePass，大脑就能读状态、拿控制权、发命令，**不需要 Olares SSH 账号**。→ **G2 基本解决**，
-  剩下的前提是 Mac 上 LarePass 能连上。各仪器服务 8766–8771 仍只听本机；只有以后改用 SSH 隧道才会用到它们。
+  所以技术上 Mac 只要连上 LarePass，不用 SSH 账号也能连。但 Jialei 选择走 SSH 隧道（见下一条）。
+  各仪器服务 8766–8771 仍只听本机。
 - 新的 Qumus 客户端：`qumus2/reactor/console.py` 里的 `ReactorConsole`（Lab Console agent API），
   默认只允许读、停止，以及不动、不加热的命令（热像仪 connect/shutter、显微镜 snapshot、vision 识别）。
   其他命令和拿运动设备的控制权在发出前就被拒绝，除非 owner 用 `allow_actuation=True` 构造。
   只读检查：`python -m qumus2.reactor.console probe`（只发 GET，不建会话、不拿控制权）。
-- `stations.yaml` 里真实 reactor 的写法：`reactor: {kind: real, url: http://100.64.0.1:8080/lab/, adapter: console, session: qumus}`。
+- **Jialei 决定（11-10）：通讯走 SSH 隧道**，不直接用 VPN 的 8080 地址。大脑开隧道到 Olares 的 Console：
+  `stations.yaml` 写 `reactor: {kind: real, adapter: console, url: http://127.0.0.1:18772/lab/, session: qumus}`。
+  所以 **G2 仍需要 reactor 负责人给 SSH 账号**，见 `docs/reactor-ssh.md`（含可直接发给负责人的请求）。
 
 ### Update 2026-11-10 (English)
 

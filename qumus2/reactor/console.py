@@ -5,7 +5,9 @@ Lab Console instead of the old propose/approve gateway. The console holds each
 agent's device leases (renewed every 1 s on the host) and releases an agent
 session after 10 minutes without a call. The console is reachable over the
 LarePass VPN through the reactor's single-port proxy at
-``http://100.64.0.1:8080/lab/``, so the brain needs no SSH tunnel to it.
+``http://100.64.0.1:8080/lab/``. Qumus reaches it through an SSH tunnel
+instead (Jialei, 2026-11-10): ``scripts/reactor_tunnel.sh`` forwards
+``127.0.0.1:18772`` to the console on Olares, see ``docs/reactor-ssh.md``.
 
 Written from the reactor repo's public docs (``docs/agent-cli.en.md``,
 ``docs/olares.en.md``, ADR 0010) and its route list. No reactor code is copied
@@ -63,6 +65,8 @@ from .adapter import REACTOR_CLIENT_HEADER, ReactorPolicyError
 VPN_CONSOLE_URL = "http://100.64.0.1:8080/lab/"
 #: Console base URL on the reactor host itself (labctl's default).
 LOCAL_CONSOLE_URL = "http://127.0.0.1:8772/lab/"
+#: Console base URL through the SSH tunnel of scripts/reactor_tunnel.sh (Jialei's choice, 11-10).
+TUNNEL_CONSOLE_URL = "http://127.0.0.1:18772/lab/"
 
 #: Devices the console knows (reactor docs/agent-cli.en.md).
 DEVICES = ("robot", "stage", "thermal", "vision", "furnace", "microscope")

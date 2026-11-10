@@ -462,7 +462,7 @@ def test_visual_context_keeps_recent_images_with_explicit_omission():
         {'type': 'input_image', 'image_url': f'data:image/png;base64,{i}'} for i in range(6)]}]
     diagnostics = []
     output = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)),
-                                diagnostic_observer=diagnostics.append)
+                                max_images=4, diagnostic_observer=diagnostics.append)
     content = output.input[0]['content']
     assert [v['image_url'] for v in content if v['type'] == 'input_image'] == [
         f'data:image/png;base64,{i}' for i in range(2, 6)]
@@ -581,8 +581,44 @@ def test_fresh_tool_images_are_all_shown(services):
              {"type": "function_call_output", "call_id": "a", "output": [img(i) for i in range(3)]},
              {"type": "function_call", "call_id": "b", "name": "get_sample_images", "arguments": "{}"},
              {"type": "function_call_output", "call_id": "b", "output": [img(i) for i in range(10, 16)]}]
-    out = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)))
+    out = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)), max_images=4)
     shown = [p["image_url"] for p in out.input[3]["output"] if p.get("type") == "input_image"]
     assert len(shown) == 6
     old = [p for p in out.input[1]["output"] if p.get("type") == "input_image"]
     assert old == []  # the bound (4) is already used by the fresh ones
+
+
+def test_picker_comparing_flakes_keeps_every_viewed_flake(monkeypatch):
+    """Viewing f002, f004, f005 one call at a time keeps all three image sets.
+
+    With a bound of 4 the picker lost the previous flake each time it viewed the
+    next one, retrieved it again and looped (full paid run, 2026-11-10).
+    """
+    from types import SimpleNamespace
+
+    from agents.run_config import ModelInputData
+
+    from qumus2.agents.openai_runtime import unique_image_input
+
+    monkeypatch.delenv("QUMUS_OPENAI_MAX_CONTEXT_IMAGES", raising=False)
+
+    def view(call, flake):
+        return [{"type": "reasoning", "id": f"r{call}", "summary": []},
+                {"type": "function_call", "call_id": call, "name": "view_flake_images",
+                 "arguments": f'{{"flake_id": "{flake}"}}'},
+                {"type": "function_call_output", "call_id": call, "output": [
+                    {"type": "input_text", "text": f"{flake}: 20x, 100x image(s) attached"},
+                    *({"type": "input_image", "image_url": f"data:image/png;base64,{flake}{k}"}
+                      for k in range(5))]}]
+
+    items = [{"role": "user", "content": "Select flakes"},
+             *view("v1", "f002"), *view("v2", "f004"), *view("v3", "f005")]
+    out = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)))
+    shown = [p["image_url"] for item in out.input if item.get("type") == "function_call_output"
+             for p in item["output"] if p.get("type") == "input_image"]
+    assert len(shown) == 15
+    monkeypatch.setenv("QUMUS_OPENAI_MAX_CONTEXT_IMAGES", "8")
+    out = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)))
+    shown = [p["image_url"] for item in out.input if item.get("type") == "function_call_output"
+             for p in item["output"] if p.get("type") == "input_image"]
+    assert len(shown) == 8 and shown[-5:] == [f"data:image/png;base64,f005{k}" for k in range(5)]

@@ -32,6 +32,7 @@ import json
 import logging
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
@@ -230,9 +231,17 @@ class V2Link:
             raise ValueError(f"{action} on {self.module}: {e.message}") from e
         return dict(record.get("data") or {})
 
-    def stop(self, wait_s: float = 1.0) -> None:
-        with self._errors():
-            self.service.stop(wait_s)
+    def stop(self, wait_s: float = 1.0, *, attempts: int = 3) -> None:
+        """Stop is idempotent: a transport error is retried (as ContractClient.stop does)."""
+        for attempt in range(max(1, attempts)):
+            try:
+                with self._errors():
+                    self.service.stop(wait_s)
+                return
+            except TransportError:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(min(0.2 * (attempt + 1), 1.0))
 
     def release(self) -> None:
         stack, self._stack, self._keeper = self._stack, None, None

@@ -11,7 +11,7 @@ import pytest
 from conftest import _close, make_fake_lab
 
 from qumus2.app import build_services
-from qumus2.contract import ContractClient, ContractVersionError
+from qumus2.contract import ContractClient, ContractVersionError, TransportError
 from qumus2.stations.link import V1Link, V2Link, load_labclient, open_link
 
 pytestmark = pytest.mark.skipif(load_labclient() is None, reason="lab-contract checkout not found")
@@ -94,3 +94,23 @@ def test_the_path_is_chosen_per_module(lab2):
         open_link("stacking", client, {"entry": lab2.entry, "contract": "2", "service": "nope"})
     with pytest.raises(ValueError):
         open_link("stacking", client, {"contract": "3"})
+
+
+def test_stop_is_retried_after_a_lost_answer(lab2, monkeypatch):
+    client = ContractClient(lab2.urls["stacking"], "qumus-agent")
+    link = open_link("stacking", client, {"entry": lab2.entry})
+    real, calls = link.service.stop, []
+
+    def flaky(wait_s):
+        calls.append(wait_s)
+        if len(calls) < 3:
+            raise OSError("connection reset")
+        return real(wait_s)
+
+    monkeypatch.setattr(link.service, "stop", flaky)
+    link.stop(0)
+    assert len(calls) == 3
+    calls.clear()
+    monkeypatch.setattr(link.service, "stop", lambda w: (_ for _ in ()).throw(OSError("down")))
+    with pytest.raises(TransportError):
+        link.stop(0)

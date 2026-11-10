@@ -35,7 +35,19 @@ class BudgetExceeded(RuntimeError):
     """Stop the model loop before another call when its configured budget is spent."""
 
 
-def unique_image_input(data: Any, max_images: int = 4, *, diagnostic_observer: Any = None) -> Any:
+DEFAULT_CONTEXT_IMAGES = 24
+
+
+def context_image_limit() -> int:
+    """How many earlier images one request carries (QUMUS_OPENAI_MAX_CONTEXT_IMAGES)."""
+    raw = os.environ.get("QUMUS_OPENAI_MAX_CONTEXT_IMAGES", "").strip()
+    try:
+        return max(1, int(raw)) if raw else DEFAULT_CONTEXT_IMAGES
+    except ValueError:
+        return DEFAULT_CONTEXT_IMAGES
+
+
+def unique_image_input(data: Any, max_images: int | None = None, *, diagnostic_observer: Any = None) -> Any:
     """Bound visual/catalogue context while preserving every tool identity.
 
     Old pixels can be requested again through the sample tools. Superseded
@@ -115,17 +127,26 @@ def unique_image_input(data: Any, max_images: int = 4, *, diagnostic_observer: A
                  and item.get('call_id') in old else item for item in items]
     # Images the latest tool results just returned are always shown: a picker that
     # retrieves 6 views to compare must see all 6 (bounding them made it retrieve
-    # again and again). The bound applies to older images only.
+    # again and again). Older images are kept whole per tool result, newest first,
+    # up to the bound, so a picker comparing three flakes keeps all three sets
+    # instead of losing the previous flake each time it views the next one.
+    if max_images is None:
+        max_images = context_image_limit()
     tail = len(items)
     while tail > 0 and isinstance(items[tail - 1], dict) \
             and items[tail - 1].get('type') == 'function_call_output':
         tail -= 1
     collect(items[tail:])
-    fresh = set(images)
-    images.clear()
-    collect(items[:tail])
-    older = [i for i in dict.fromkeys(reversed(images)) if i not in fresh]
-    retained = fresh | set(older[:max(0, max_images - len(fresh))] if fresh else older[:max(1, max_images)])
+    retained = set(images)
+    for item in reversed(items[:tail]):
+        images.clear()
+        collect(item)
+        group = [i for i in dict.fromkeys(reversed(images)) if i not in retained]
+        room = max(1, max_images) - len(retained)
+        if len(group) > room:
+            retained.update(group[:max(0, room)])  # newest first; the bound ends here
+            break
+        retained.update(group)
     actions = {"superseded_snapshots": max(0, len(results) - 1),
                "omitted_images": 0, "duplicate_images": 0}
     if compacted_catalogues:
@@ -139,8 +160,8 @@ def unique_image_input(data: Any, max_images: int = 4, *, diagnostic_observer: A
                     actions["omitted_images"] += 1
                     return {"type": "input_text", "text": (
                         "[Earlier image omitted from this request to bound visual context. "
-                        "Retrieve the sample's images again if needed for comparison; "
-                        "its text record is unchanged.]")}
+                        "Your earlier view of it still counts and its text record is unchanged. "
+                        "Retrieve the sample's images again only if a direct comparison needs it.]")}
                 if key in seen:
                     actions["duplicate_images"] += 1
                     return {"type": "input_text", "text": "[Same image attached earlier in this request.]"}

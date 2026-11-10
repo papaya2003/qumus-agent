@@ -37,7 +37,7 @@ What this entry changes:
 - A console station has no record feed and no contract jobs. `records_from` must name a contract station.
 - `qumus2/app.py` builds a `ReactorStation` for it and hands it to the tools through the gateway (`ctx.extra["stations"]`).
 - The brain's stop also stops it.
-- The opt-in file `qumus2/config/stations.reactor-console.yaml` has this entry for the sim. The packaged default is unchanged until the Hall-bar paid run is done.
+- The packaged default `qumus2/config/stations.yaml` uses this entry for the sim reactor (since 2026-11-10, after the round trip passed).
 
 ## Tools (`qumus2/reactor/tools.py`)
 

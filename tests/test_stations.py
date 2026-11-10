@@ -39,7 +39,8 @@ def test_stations_yaml_default_and_errors(tmp_path):
     st = config.load(None) if not os.environ.get("QUMUS_STATIONS") else None
     if st is not None and st.path is None:
         assert st.urls == {"exfoliation": "http://127.0.0.1:8781/", "stacking": "http://127.0.0.1:8782/",
-                           "reactor": "http://127.0.0.1:8783/"}
+                           "reactor": "http://127.0.0.1:8783/lab/"}
+        assert st.modules["reactor"].extra == {"adapter": "console", "session": "qumus"}
         assert st.all_sim and st.records_from == "stacking" and st.bench == "sim"
         assert st.simlab_dir == (ROOT.parent / "qumus-simlab").resolve()
     f = tmp_path / "stations.yaml"

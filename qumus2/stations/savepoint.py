@@ -233,6 +233,10 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
         shutil.copy2(sp / "brain" / f"qumus{SESSIONS_SUFFIX}", db.with_suffix(SESSIONS_SUFFIX))
     if (sp / "brain" / TIMELINE).exists():
         shutil.copy2(sp / "brain" / TIMELINE, db.parent / TIMELINE)
+    targets = photo_root / "targets"
+    if targets.is_dir() and not (db.parent / "targets").exists():
+        # imported target files: copied, the design tools refuse links
+        shutil.copytree(targets, db.parent / "targets", symlinks=False)
     images = photo_root / "images"
     if images.is_dir() and not (db.parent / "images").exists():
         # mirrored pictures: records point at them by path; a link keeps both runs consistent
@@ -243,18 +247,32 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
     return {**meta, "resumed": resumed, "lab_dir": sp / "lab", "photo_root": photo_root}
 
 
+def _delegation(actions: list[Any], agent: str) -> int | None:
+    return next((i for i, a in enumerate(actions)
+                 if isinstance(a, dict) and (a.get("delegate") or {}).get("to") == agent), None)
+
+
 def resume_scenario(scenario: dict[str, Any], *, from_agent: str = "picker",
-                    say: str = RESUME_SAY) -> dict[str, Any]:
-    """The scripted scenario from its first delegation to `from_agent` on."""
+                    say: str = RESUME_SAY, redo_plan: bool = False) -> dict[str, Any]:
+    """The scripted scenario from its first delegation to `from_agent` on.
+
+    `redo_plan`: the save point has no accepted device plan (e.g. it failed
+    before the save), so the advisor's delegation (up to its `done`) runs first."""
     turns = scenario.get("turns") or []
     if not turns:
         raise ValueError("scenario has no turns")
     actions = turns[0]["actions"]
-    start = next((i for i, a in enumerate(actions)
-                  if isinstance(a, dict) and (a.get("delegate") or {}).get("to") == from_agent), None)
+    start = _delegation(actions, from_agent)
     if start is None:
         raise ValueError(f"scenario never delegates to {from_agent}")
     head = [{"say": {"agent": "orchestrator", "text": say}}] if say else []
+    if redo_plan:
+        a = _delegation(actions, "advisor")
+        if a is None:
+            raise ValueError("scenario never delegates to advisor")
+        end = next(i for i in range(a, len(actions))
+                   if isinstance(actions[i], dict) and (actions[i].get("done") or {}).get("agent") == "advisor")
+        head += actions[a:end + 1]
     first = {**turns[0], "actions": head + actions[start:]}
     return {**scenario, "name": f"{scenario.get('name', 'scenario')}_resumed",
             "turns": [first, *turns[1:]]}

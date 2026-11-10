@@ -42,9 +42,22 @@ def _serve(args: argparse.Namespace) -> None:
         resumed = restore_savepoint(args.resume, args.db)
         # the lab half carries its own seed and target
         seed, simlab_args = None, ["--resume", str(resumed["lab_dir"])]
-        scenario = resume_scenario(load_scenario(args.scenario))
+        from qumus2.runtime.store import RunStore
+
+        restored = RunStore(args.db)
+        try:
+            projects = restored.list_projects()
+            has_plan = bool(projects and (projects[0]["state"].get("device_plan") or {}).get("flake_roles"))
+        finally:
+            restored.close()
+        scenario = resume_scenario(load_scenario(args.scenario), redo_plan=not has_plan)
         print(f"resuming from {resumed['resumed']['savepoint']} (event {resumed['last_event_id']}, "
               f"saved {resumed['saved_at']}, code {resumed.get('git_commit')})")
+    if args.target_bundle:
+        from qumus2.stations.target_bundle import import_target_bundle
+
+        # the design tools read the target from the brain's own run folder
+        import_target_bundle(args.target_bundle, Path(args.db).resolve().parent)
     services = build_services(args.db, stations=args.stations, scenario=scenario,
                               use_openai=args.openai and not args.mock,
                               run_budget_usd=args.budget, step_delay_s=0.6,

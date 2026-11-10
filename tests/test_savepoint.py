@@ -110,3 +110,23 @@ def test_resume_scenario_starts_at_picker():
     out = resume_scenario(sc)
     assert out["turns"][0]["actions"][1] == {"delegate": {"to": "picker"}}
     assert out["turns"][0]["actions"][0]["say"]["agent"] == "orchestrator"
+
+
+def test_restore_copies_imported_targets(tmp_path):
+    s, _ = _services(tmp_path)
+    t = tmp_path / "run1" / "targets" / "abc"
+    t.mkdir(parents=True)
+    (t / "target.json").write_text("{}")
+    save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01")
+    restore_savepoint(tmp_path / "run1", tmp_path / "run2" / "qumus.db")
+    copied = tmp_path / "run2" / "targets" / "abc" / "target.json"
+    assert copied.is_file() and not (tmp_path / "run2" / "targets").is_symlink()
+
+
+def test_resume_scenario_can_redo_the_plan():
+    sc = {"name": "x", "turns": [{"actions": [
+        {"say": {"text": "a"}}, {"delegate": {"to": "advisor"}}, {"tool": {"agent": "advisor", "name": "p"}},
+        {"done": {"agent": "advisor"}}, {"delegate": {"to": "hands"}}, {"delegate": {"to": "picker"}}]}]}
+    acts = resume_scenario(sc, redo_plan=True)["turns"][0]["actions"]
+    assert [list(a)[0] for a in acts] == ["say", "delegate", "tool", "done", "delegate"]
+    assert acts[-1] == {"delegate": {"to": "picker"}}

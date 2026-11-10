@@ -37,7 +37,7 @@ python -m qumus2.reactor.console probe --url http://127.0.0.1:18772/lab/
 
 ## Why the console and not the six device ports
 
-Pending Jialei's pick (decision card 2026-11-10). Recommended: the console. Since reactor ADR 0010
+Decided by Jialei on 2026-11-10: the tunnel goes to the console. Since reactor ADR 0010
 (2026-11-09) agents control devices through the Lab Console, which holds their leases and shows each agent
 holder on its Overview, where the owner can take control back with **Release all**. Tunnelling to the device
 services (8766-8771) with `ReactorLab` would bypass the console and fight it for device control. One tunnel

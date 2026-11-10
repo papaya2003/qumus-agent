@@ -15,7 +15,7 @@ reactor 仓库在 2026-11-09 接受了 ADR 0010，取代 ADR 0008：
   只读检查：`python -m qumus2.reactor.console probe`（只发 GET，不建会话、不拿控制权）。
 - **Jialei 决定（11-10）：通讯走 SSH 隧道**，不直接用 VPN 的 8080 地址。大脑开隧道到 Olares 的 Console：
   `stations.yaml` 写 `reactor: {kind: real, adapter: console, url: http://127.0.0.1:18772/lab/, session: qumus}`。
-  所以 **G2 仍需要 reactor 负责人给 SSH 账号**，见 `docs/reactor-ssh.md`（含可直接发给负责人的请求）。
+  隧道接 Lab Console 8772（Jialei 11-10 选定，不直连 6 个仪器服务）。所以 **G2 仍需要 reactor 负责人给 SSH 账号**，见 `docs/reactor-ssh.md`（含可直接发给负责人的请求）。
 
 ### Update 2026-11-10 (English)
 

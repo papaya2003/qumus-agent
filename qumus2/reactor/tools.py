@@ -44,7 +44,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from qumus2.agents.tooling import ToolContext, ToolResult, qumus_tool
 from qumus2.contract.errors import ContractError
 from qumus2.reactor.adapter import ReactorPolicyError
-from qumus2.reactor.console import ReactorConsole, RecipeResult
+from qumus2.reactor.console import RECIPE_DEVICES, ReactorConsole, RecipeResult
 
 TRAY = "reactor:tray:"
 CRUCIBLE = "reactor:crucible"
@@ -130,8 +130,8 @@ def _check_gas(value: GasPercent | None) -> GasPercent | None:
 
 
 class HeatStep(_Args):
-    temperature_c: float = Field(ge=0, description="Step target temperature, deg C")
-    ramp_rate_c_per_min: float = Field(gt=0, description="Ramp rate to the target, deg C/min")
+    temperature_c: float = Field(ge=0, le=1000, description="Step target temperature, deg C (furnace max 1000)")
+    ramp_rate_c_per_min: float = Field(gt=0, le=100, description="Ramp rate to the target, deg C/min (max 100)")
     hold_minutes: float = Field(ge=0, description="Hold at the target, minutes")
     gas: GasPercent | None = Field(None, description="MFC channel '0'..'2' -> percent of full scale")
 
@@ -208,6 +208,60 @@ async def _call(fn: Any, *args: Any, **kwargs: Any) -> Any:
     return await asyncio.to_thread(fn, *args, **kwargs)
 
 
+#: devices each brain action needs (recipes take theirs from RECIPE_DEVICES)
+ACTION_DEVICES: dict[str, tuple[str, ...]] = {
+    "load": RECIPE_DEVICES["crucible-load"], "unload": RECIPE_DEVICES["crucible-unload"],
+    "slot_check": RECIPE_DEVICES["slot-state"], "heat": ("furnace",), "snapshot": ("microscope",),
+    "record": RECIPE_DEVICES["microscope-record"]}
+
+
+def readiness(console: ReactorConsole, devices: tuple[str, ...] | list[str], *,
+              gas: bool = False) -> list[str]:
+    """Why these devices cannot do their job now, from read-only console state.
+
+    Empty list = nothing known to block. Only facts the console states are used
+    (a missing field never blocks): a service row with ``connected: false`` or a
+    fault, stage automation not configured, vision without a calibrated camera,
+    the microscope camera off, and for gas the flow controller not connected."""
+    reasons: list[str] = []
+    try:
+        services = {row.get("id"): row for row in console.overview().get("services") or []
+                    if isinstance(row, dict)}
+    except ContractError as exc:
+        return [f"reactor console not reachable: {exc}"]
+    for device in devices:
+        row = services.get(device) or {}
+        if row.get("connected") is False:
+            reasons.append(f"{device} is not connected")
+        if row.get("fault"):
+            reasons.append(f"{device} fault: {row['fault']}")
+        try:
+            state = console.device_state(device).get("state") or {}
+        except ContractError as exc:
+            reasons.append(f"{device} state unreadable: {exc}")
+            continue
+        if state.get("fault") and not row.get("fault"):
+            reasons.append(f"{device} fault: {state['fault']}")
+        automation = state.get("automation") if device == "stage" else None
+        if isinstance(automation, dict) and automation.get("configured") is False:
+            reasons.append("stage automation is not configured"
+                           + (f" ({automation['error']})" if automation.get("error") else ""))
+        if device == "vision" and state.get("calibrated_cameras") == []:
+            reasons.append("vision has no calibrated camera")
+        cameras = state.get("cameras") if device == "microscope" else None
+        if isinstance(cameras, dict) and cameras.get("microscope") is False:
+            reasons.append("the microscope camera is not connected")
+        flow = state.get("flow") if device == "furnace" else None
+        if gas and isinstance(flow, dict) and flow.get("connected") is False:
+            reasons.append("the gas flow controller is not connected")
+    return reasons
+
+
+def _not_ready(action: str, reasons: list[str]) -> ToolResult:
+    return ToolResult(status="error", summary=f"reactor not ready to {action}: " + "; ".join(reasons),
+                      data={"not_ready": reasons})
+
+
 def _furnace_summary(state: dict[str, Any]) -> dict[str, Any]:
     sequence = state.get("sequence") or {}
     return {"pv_c": state.get("pv_c", state.get("pv")), "target_c": state.get("target_c", state.get("sv")),
@@ -215,7 +269,9 @@ def _furnace_summary(state: dict[str, Any]) -> dict[str, Any]:
             "sequence_running": sequence.get("running"), "phase": sequence.get("phase"),
             "step_index": sequence.get("current_index"),
             "hold_remaining_s": sequence.get("hold_remaining_seconds"),
-            "busy": state.get("busy"), "fault": state.get("fault")}
+            "busy": state.get("busy"), "fault": state.get("fault"),
+            "run_state": state.get("run_state"),
+            "gas_controller_connected": (state.get("flow") or {}).get("connected")}
 
 
 def _furnace_busy(state: dict[str, Any]) -> str | None:
@@ -261,6 +317,7 @@ async def reactor_status(args: NoArgs, ctx: ToolContext) -> ToolResult:
         overview = await _call(console.overview)
     except ContractError as exc:
         return ToolResult(status="error", summary=f"reactor console not reachable: {exc}")
+    services = {row.get("id"): row for row in overview.get("services") or [] if isinstance(row, dict)}
     devices: dict[str, Any] = {}
     for device in ("furnace", "stage", "thermal", "microscope", "vision", "robot"):
         try:
@@ -271,22 +328,36 @@ async def reactor_status(args: NoArgs, ctx: ToolContext) -> ToolResult:
         state = body.get("state") or {}
         entry = {k: state.get(k) for k in ("busy", "locked", "fault", "connected") if k in state}
         entry["holder"] = (body.get("control") or {}).get("holder")
+        row = services.get(device) or {}
+        if "connected" in row:
+            entry["connected"] = row["connected"]
         if device == "furnace":
             entry.update(_furnace_summary(state))
         elif device == "stage":
             entry["automation"] = state.get("automation")
         elif device == "thermal":
-            entry["regions"] = state.get("regions") or state.get("roi")
+            entry.update(stream=state.get("state"), fps=state.get("fps"))
+        elif device == "robot":
+            entry["enabled"] = state.get("enabled")
+        elif device == "vision":
+            entry["calibrated_cameras"] = state.get("calibrated_cameras")
+        elif device == "microscope":
+            entry.update(cameras=state.get("cameras"), objective_id=state.get("objective_id"),
+                         recording=(state.get("recording") or {}).get("status"))
         devices[device] = entry
+    ready = {action: await _call(readiness, console, needs) for action, needs in ACTION_DEVICES.items()}
+    ready["heat_with_gas"] = await _call(readiness, console, ("furnace",), gas=True)
     furnace = devices.get("furnace", {})
+    blocked = sorted(action for action, reasons in ready.items() if reasons)
     summary = (f"reactor {station.kind}: furnace {furnace.get('pv_c')} C, "
                f"program {'running' if furnace.get('sequence_running') else 'not running'}"
-               f"; run {'active' if overview.get('run') else 'none'}")
+               f"; run {'active' if overview.get('run') else 'none'}"
+               + (f"; not ready: {', '.join(blocked)}" if blocked else ""))
     return ToolResult(status="ok", summary=summary, data={
         "kind": station.kind, "actuation_allowed": console.allow_actuation,
-        "console": overview.get("console"), "control": overview.get("control"),
-        "run": overview.get("run"), "devices": devices, "slots": list(station.slots or []),
-        "chips": _chip_ledger(ctx)})
+        "console": overview.get("console"), "orchestrator": overview.get("orchestrator"),
+        "control": overview.get("control"), "run": overview.get("run"), "devices": devices,
+        "ready": ready, "slots": list(station.slots or []), "chips": _chip_ledger(ctx)})
 
 
 async def _slot_state(station: ReactorStation, slot: str) -> tuple[str | None, RecipeResult | None]:
@@ -432,6 +503,8 @@ async def _recipe_tool(ctx: ToolContext, tool: str, params: dict[str, Any], reci
         return ToolResult(status="error", summary=f"not loading: {busy}")
     if _furnace_summary(furnace)["sequence_running"]:
         return ToolResult(status="error", summary="the furnace program is still running")
+    if reasons := await _call(readiness, console, RECIPE_DEVICES[recipe]):
+        return _not_ready(tool, reasons)
     run = _Run(ctx, tool, params)
     run.step("furnace_check", measurements=_furnace_summary(furnace))
     try:
@@ -506,6 +579,10 @@ async def reactor_heat(args: HeatArgs, ctx: ToolContext) -> ToolResult:
         return ToolResult(status="error", summary=f"reactor console not reachable: {exc}")
     if _furnace_summary(furnace)["sequence_running"]:
         return ToolResult(status="error", summary="a furnace program is already running")
+    gas = args.end_gas is not None or any(step.gas for step in args.steps)
+    needs = ("furnace", "microscope") if args.record else ("furnace",)
+    if reasons := await _call(readiness, console, needs, gas=gas):
+        return _not_ready("heat", reasons)
     start = _furnace_summary(furnace)["pv_c"]
     minutes = _program_minutes(start if isinstance(start, (int, float)) else 25.0, args.steps)
     run = _Run(ctx, "heat", args.model_dump(exclude_none=True))
@@ -569,6 +646,8 @@ async def reactor_snapshot(args: ChipArgs, ctx: ToolContext) -> ToolResult:
     if station is None:
         return _no_station()
     console = station.console
+    if reasons := await _call(readiness, console, ACTION_DEVICES["snapshot"]):
+        return _not_ready("take a picture", reasons)
     run = _Run(ctx, "snapshot", args.model_dump())
     try:
         await _call(console.ensure_control, ["microscope"])
@@ -595,6 +674,8 @@ async def reactor_record(args: RecordArgs, ctx: ToolContext) -> ToolResult:
     station = station_of(ctx)
     if station is None:
         return _no_station()
+    if reasons := await _call(readiness, station.console, ACTION_DEVICES["record"]):
+        return _not_ready("record", reasons)
     run = _Run(ctx, "record", args.model_dump())
     try:
         result = await _call(station.console.run_recipe, "microscope-record",

@@ -119,7 +119,10 @@ def test_events_filter(fake):
     console.stop("stage")
     assert [e["service"] for e in console.events()] == ["robot", "stage"]
     assert [e["service"] for e in console.events(device="stage")] == ["stage"]
-    assert console.events(since=2) == []
+    rows = console.events()
+    assert [e["seq"] for e in rows] == [1, 1]  # seq is per service on the real console
+    assert console.events(since_ts=rows[-1]["ts_unix"]) == []
+    assert [e["service"] for e in console.events(since_ts=rows[0]["ts_unix"])] == ["stage"]
 
 
 def test_cli_probe(fake, capsys):

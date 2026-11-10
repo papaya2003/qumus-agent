@@ -62,6 +62,26 @@ How every call is handled:
   - It sends `POST api/runs {recipe, params, borrow: true}` and polls `api/state`.
   - A held run is aborted. The orchestrator lease is released at the end.
 
+## Readiness (from the real console, 2026-11-10)
+
+Before any action the tools read the console (GETs only) and refuse, sending
+nothing, when the console itself says a needed device cannot work:
+a `services` row with `connected: false` or a fault, stage
+`automation.configured: false`, vision `calibrated_cameras: []`, microscope
+`cameras.microscope: false`, and for gas programs furnace `flow.connected: false`.
+`reactor_status` reports this per action under `ready` (empty list = nothing
+known to block). Furnace programs are limited to 1000 C and 100 C/min, as the
+real furnace describes `apply_setpoint`.
+
+First read-only check of the real console (2026-11-10 05:47Z, through the Mac
+tunnel `127.0.0.1:18772 -> Olares 127.0.0.1:8772`, base `/lab/`): console commit
+2137e7a, not demo; orchestrator idle, no lease; furnace, thermal, vision and
+microscope connected; **robot and stage not connected**; stage automation not
+configured (`/var/lib/mg400/stage/stage.toml` missing); vision has no
+calibrated camera; **gas flow controller not connected**; furnace stopped at
+22 C. Console events number `seq` per service, so the client orders them by
+`ts_unix`.
+
 ## Retired
 
 These were removed:

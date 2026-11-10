@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -47,7 +48,11 @@ class FakeConsole:
         self.crucible: str | None = None
         self.states["furnace"].update({"pv_c": 25.0, "target_c": 25.0, "control_mode": "STOPPED",
                                        "flow_pct": [0.0, 0.0, 0.0],
+                                       "flow": {"connected": True, "gas_channels": [
+                                           {"channel_index": i, "available": True} for i in range(3)]},
                                        "sequence": {"running": False, "phase": "idle"}})
+        #: device -> connected, as the real console's overview "services" rows report it
+        self.connected: dict[str, bool] = {d: True for d in self.states}
         self.furnace_reads_left = 0
         self.load_max_c = 100.0
         self.hold_recipe: str | None = None  # this recipe's run holds instead of completing
@@ -70,8 +75,10 @@ class FakeConsole:
         self._server.server_close()
 
     def _event(self, service: str, message: str) -> None:
-        self.seq += 1
-        self.events.append({"seq": self.seq, "service": service, "message": message})
+        self.seq += 1  # like the real console: seq per service, newest first in the list
+        seq = 1 + sum(1 for e in self.events if e["service"] == service)
+        self.events.insert(0, {"seq": seq, "service": service, "message": message, "level": "info",
+                               "ts_unix": time.time() + self.seq * 1e-6})
 
     def _handler(self):
         console = self
@@ -100,8 +107,14 @@ class FakeConsole:
                     if path == "api/console/state":
                         control = [{"device": d, "holder": h, "mine": h == page}
                                    for d, h in console.holders.items()]
+                        services = [{"id": d, "connected": console.connected.get(d, True),
+                                     "configured": True, "busy": False, "fault": None, "phase": "ready"}
+                                    for d in console.states]
+                        orch = {"connected": True, "busy": bool(console.orchestrator.get("active_run")),
+                                "lease": {"holder": console.orchestrator_holder}}
                         return self._send(200, {"console": {"commit": "fake", "demo": console.demo},
-                                                "control": control, "run": None})
+                                                "control": control, "run": None, "services": services,
+                                                "orchestrator": orch})
                     if path == "api/console/events":
                         return self._send(200, {"events": list(console.events), "errors": {}})
                     if path == "api/state":

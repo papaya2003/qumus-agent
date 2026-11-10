@@ -177,3 +177,40 @@ def test_stations_yaml_console_adapter(tmp_path):
             "reactor": {"url": "http://127.0.0.1:8783/lab/", "adapter": "console"}}})
     with pytest.raises(ValueError):
         stations_config.parse({"modules": {"stacking": {"url": "http://x/", "adapter": "bridge"}}})
+
+
+def test_not_ready_reactor_refuses_before_sending(fake, tmp_path):
+    """The real reactor 11-10: robot and stage offline, stage automation unconfigured,
+    no calibrated camera, gas controller offline. Tools say why and send nothing."""
+    ctx = _ctx(fake, tmp_path)
+    run(rt.reactor_handover_in(rt.HandoverArgs(chip_id="chip_r1", slot="A1"), ctx))
+    fake.connected.update(robot=False, stage=False)
+    fake.states["stage"]["automation"] = {"configured": False, "error": "stage.toml missing"}
+    fake.states["vision"]["calibrated_cameras"] = []
+    fake.states["furnace"]["flow"]["connected"] = False
+    posts = len(fake.posts)
+    r = run(rt.reactor_load(rt.LoadArgs(chip_id="chip_r1", from_slot="A1"), ctx))
+    assert r.status == "error" and "robot is not connected" in r.summary
+    assert "stage automation is not configured (stage.toml missing)" in r.data["not_ready"]
+    assert len(fake.posts) == posts and fake.crucible is None
+    status = run(rt.reactor_status(rt.NoArgs(), ctx))
+    assert status.status == "ok" and "not ready" in status.summary
+    assert status.data["ready"]["heat"] == []
+    assert "vision has no calibrated camera" in status.data["ready"]["slot_check"]
+    assert status.data["ready"]["heat_with_gas"] == ["the gas flow controller is not connected"]
+    assert status.data["devices"]["robot"]["connected"] is False
+    assert status.data["devices"]["furnace"]["gas_controller_connected"] is False
+    fake.crucible = "chip_r1"
+    rt._place(ctx, "chip_r1", rt.CRUCIBLE)
+    r = run(rt.reactor_heat(rt.HeatArgs(chip_id="chip_r1", steps=[
+        {"temperature_c": 300, "ramp_rate_c_per_min": 50, "hold_minutes": 1, "gas": {"0": 20}}],
+        end_gas={"0": 5}, end_gas_until_c=80), ctx))
+    assert r.status == "error" and "gas flow controller" in r.summary
+    assert not any(p == "api/console/command/furnace" for p, _, _ in fake.posts)
+
+
+def test_heat_limits_follow_the_real_furnace():
+    with pytest.raises(ValueError):
+        rt.HeatStep(temperature_c=1200, ramp_rate_c_per_min=10, hold_minutes=1)
+    with pytest.raises(ValueError):
+        rt.HeatStep(temperature_c=500, ramp_rate_c_per_min=150, hold_minutes=1)

@@ -225,11 +225,16 @@ class ReactorConsole:
         """Offered commands of one device: ``{"commands": {name: schema...}}``."""
         return self._get(f"api/console/describe/{self._device(device)}")
 
-    def events(self, since: int = 0, device: str | None = None) -> list[dict[str, Any]]:
+    def events(self, since_ts: float = 0.0, device: str | None = None) -> list[dict[str, Any]]:
+        """Console events newer than ``since_ts`` (unix seconds), oldest first.
+
+        The real console numbers ``seq`` per service (robot 1.., runs 1..), so
+        events are ordered and filtered by ``ts_unix``, never by ``seq``."""
         rows = self._get("api/console/events").get("events", [])
-        return [row for row in rows
+        rows = [row for row in rows
                 if (device is None or row.get("service") == device)
-                and isinstance(row.get("seq"), int) and row["seq"] > since]
+                and isinstance(row.get("ts_unix"), (int, float)) and row["ts_unix"] > since_ts]
+        return sorted(rows, key=lambda row: row["ts_unix"])
 
     def probe(self) -> dict[str, Any]:
         """Read-only connectivity report. Sends GETs only: no session, no control, no command."""

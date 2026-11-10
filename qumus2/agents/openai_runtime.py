@@ -811,7 +811,7 @@ class OpenAIRuntime:
             if name == ORCHESTRATOR:
                 instructions += ("\nOpenAI runtime: call delegate_eyes / delegate_advisor / "
                                  "delegate_hands / delegate_picker / delegate_designer / delegate_reactor. Each "
-                                 "takes task input; delegate_reactor also accepts an objective object or null. Task input is {input: 'sN: task, ids, parameters and context'}. "
+                                 "takes task input. Task input is {input: 'sN: task, ids, parameters and context'}. "
                                  "Only tools actually in your list are yours. Each task "
                                  "should state only its positive objective; unrelated "
                                  "workflow names can confuse the intent checks.\n")
@@ -947,15 +947,6 @@ class OpenAIRuntime:
                 if not completed:
                     self.gateway.delegation_finished(key, "pending")
 
-        if role == "reactor":
-            from qumus2.records.reactor_requirements import ReactorTaskObjective
-
-            schema = dict(tool.params_json_schema)
-            schema["properties"] = {**schema["properties"], "objective": {
-                "anyOf": [ReactorTaskObjective.model_json_schema(), {"type": "null"}],
-                "description": "Structured reaction objective within this task dialogue; null for observation/transport."}}
-            schema["required"] = [*schema.get("required", []), "objective"]
-            tool = replace(tool, params_json_schema=schema)
         return replace(tool, on_invoke_tool=invoke)
 
     def _stream_event(self, event: Any) -> None:

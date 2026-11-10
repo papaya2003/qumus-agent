@@ -91,15 +91,10 @@ def preserves_obligation(previous: dict, current: dict) -> bool:
 FLOW_SAMPLE_STATUSES = {
     "exfoliate_chips": {"receiving_chip": "exfoliated"},
     "prepare_reactor_pair": {"carrier": "reactor_pair_prepared", "input_flakes": "stacked"},
-    "reactor_reaction": {"carrier": "reactor_processed"},
     "prepare_material_metal": {"carrier": "material_metal_prepared", "input_flakes": "stacked"},
-    # GrowthWindow.on_success records processing; both layers remain unconsumed.
-    # The observed progress/result and terminal disposition are still required.
-    "reactor_material_metal": {"carrier": "reactor_processed", "input_flakes": "stacked"},
 }
-STATUS_PRESERVING_STORAGE_FLOWS = frozenset({
-    "inspect_reactor_product", "unload_reactor_chip", "verify_reactor_state",
-})
+#: (the sim-era reactor storage flows were retired 2026-11-10)
+STATUS_PRESERVING_STORAGE_FLOWS: frozenset[str] = frozenset()
 
 
 #: Where exfoliate_chips stores its chips (the station's exfoliation flow).

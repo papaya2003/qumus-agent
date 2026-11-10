@@ -10,7 +10,14 @@
       reactor:     {url: "http://127.0.0.1:8783/", kind: sim}
 
 `kind` is `sim` (qumus-simlab window) or `real` (a laboratory computer, usually
-through an SSH tunnel). Extra keys of a module entry are kept with it. Relative `simlab_dir` is relative to the
+through an SSH tunnel). Extra keys of a module entry are kept with it.
+`adapter: console` marks a station that speaks the vdW reactor's own Lab Console
+API instead of contract v1 (qumus2/reactor/console.py; Jialei 2026-11-10), e.g.
+
+      reactor: {url: "http://127.0.0.1:8783/lab/", kind: sim, adapter: console, session: qumus}
+
+Such a station has no record feed and no contract jobs: the brain's reactor tools
+(qumus2/reactor/tools.py) drive it. Relative `simlab_dir` is relative to the
 stations.yaml file.
 
 Search order: --stations PATH, env QUMUS_STATIONS, ./stations.yaml, the packaged
@@ -28,6 +35,7 @@ import yaml
 
 MODULES = ("exfoliation", "stacking", "reactor")
 KINDS = ("sim", "real")
+ADAPTERS = ("contract", "console")
 DEFAULT_PATH = Path(__file__).resolve().parent.parent / "config" / "stations.yaml"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -38,6 +46,10 @@ class Station:
     url: str
     kind: str = "sim"
     extra: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def adapter(self) -> str:
+        return str(self.extra.get("adapter") or "contract")
 
     def to_dict(self) -> dict[str, Any]:
         return {"module": self.module, "url": self.url, "kind": self.kind, **self.extra}
@@ -58,6 +70,16 @@ class Stations:
     @property
     def urls(self) -> dict[str, str]:
         return {m: s.url for m, s in self.modules.items()}
+
+    @property
+    def contract_urls(self) -> dict[str, str]:
+        """Stations that speak contract v1 (job service, record feeds)."""
+        return {m: s.url for m, s in self.modules.items() if s.adapter == "contract"}
+
+    @property
+    def consoles(self) -> dict[str, Station]:
+        """Stations that speak the reactor Lab Console API (adapter: console)."""
+        return {m: s for m, s in self.modules.items() if s.adapter == "console"}
 
     @property
     def all_sim(self) -> bool:
@@ -100,6 +122,8 @@ def parse(raw: dict[str, Any], *, path: Path | None = None) -> Stations:
         if kind not in KINDS:
             raise ValueError(f"stations.yaml: {name}.kind must be sim or real, got {kind!r}")
         extra = {k: v for k, v in entry.items() if k not in ("url", "kind")}
+        if extra.get("adapter", "contract") not in ADAPTERS:
+            raise ValueError(f"stations.yaml: {name}.adapter must be one of {', '.join(ADAPTERS)}")
         modules[name] = Station(name, _normalise_url(entry.get("url"), name), kind, extra)
     records_from = raw.get("records_from", "stacking")
     feeds = (records_from,) if isinstance(records_from, str) else tuple(records_from or ())
@@ -108,6 +132,9 @@ def parse(raw: dict[str, Any], *, path: Path | None = None) -> Stations:
     for feed in feeds:
         if feed not in modules:
             raise ValueError(f"stations.yaml: records_from {feed!r} is not a configured module")
+        if modules[feed].adapter != "contract":
+            raise ValueError(f"stations.yaml: records_from {feed!r} has no record feed "
+                             "(adapter: console); the brain records its jobs itself")
     simlab_dir = raw.get("simlab_dir")
     base = path.parent if path is not None else REPO_ROOT
     resolved = (base / simlab_dir).resolve() if simlab_dir else None

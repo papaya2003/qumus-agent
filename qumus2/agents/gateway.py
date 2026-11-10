@@ -30,7 +30,6 @@ from qumus2.records.plan_completion import (
     completion_contract,
     linked_job_evidence,
     linked_physical_jobs,
-    unmet_reactor_outcome,
     unmet_sample_outcomes,
 )
 from qumus2.records.search_outcomes import SEARCH_FLOWS, search_target_error
@@ -41,7 +40,7 @@ from qumus2.runtime.store import RunStore
 _STEP_REF = re.compile(r"\s*\[?([A-Za-z]*\d+[A-Za-z0-9_.-]*)\]?\s*[:\-\]]?\s")
 
 #: what the picker / designer must have had accepted for its step to be done
-DELIVERABLES = {"picker": ("submit_flake_selection", "submit_reactor_selection"),
+DELIVERABLES = {"picker": ("submit_flake_selection",),
                 "designer": ("submit_design", "create_device_design", "assess_relaxation")}
 _GOOD = ("ok", "corrected")
 #: job states after which the bench may not be what the ledger says
@@ -52,11 +51,7 @@ _FLOW_WORDS = {"exfoliate_chips": ("exfoliat",),
                "search_chip": ("search", "scan", "catalog"),
                "revisit_chip": ("revisit", "photograph", "re-photograph", "search"),
                "stack_device": ("stack", "assembl"),
-               "place_chip_on_transfer_stage": ("place", "load", "transfer stage"),
-               "load_reactor_chip": ("reactor",), "reactor_growth": ("reactor", "growth"),
-               "reactor_reaction": ("reactor", "reaction"),
-               "position_reactor_slot": ("reactor",), "observe_reactor": ("reactor",),
-               "shutdown_reactor": ("reactor",), "unload_reactor_chip": ("reactor",)}
+               "place_chip_on_transfer_stage": ("place", "load", "transfer stage")}
 
 
 @dataclass
@@ -72,10 +67,13 @@ class _Delegation:
 
 class ToolGateway:
     def __init__(self, registry: ToolRegistry, store: RunStore, jobs: JobService,
-                 project_id: str | None = None, bench: dict[str, Any] | None = None) -> None:
+                 project_id: str | None = None, bench: dict[str, Any] | None = None,
+                 stations: dict[str, Any] | None = None) -> None:
         self.registry, self.store, self.jobs = registry, store, jobs
         self.project_id = project_id
         self.bench = bench
+        #: stations outside contract v1 that tools drive directly (reactor Lab Console)
+        self.stations = dict(stations or {})
         self.inbox = Inbox(store)
         self._open: dict[str, _Delegation] = {}  # delegation key -> what it is doing
         self._facts: dict[str, str] = {}  # key -> facts of a checked delegation, once
@@ -160,22 +158,6 @@ class ToolGateway:
                 if missing:
                     d = Decision(False, "No photographed candidates for " + ", ".join(missing)
                         + "; plan Hands preparation/search before Picker screening.", "missing_photographed_inputs")
-        if d.allow and to == "reactor":
-            from qumus2.records.reactor_requirements import (
-                ReactorTaskObjective,
-                capture_reactor_objective,
-                established_requirements,
-            )
-
-            match = _STEP_REF.match(task or "")
-            step = next((s for s in self._plan() if match and s.get("id") == match.group(1)), {})
-            if established_requirements(self.store, self.project_id) and step.get("operation") in ("reactor_reaction", "reactor_material_metal"):
-                try:
-                    with self.store._transaction():
-                        capture_reactor_objective(self.store, self.project_id, task,
-                            ReactorTaskObjective.model_validate(objective), step)
-                except ValueError as exc:
-                    d = Decision(False, str(exc), "reactor_objective_required")
         if not d.allow:
             self.store.emit("tool.denied", {"tool": "delegate",
                                             "args": {"to": to, "task": task[:300]},
@@ -222,7 +204,7 @@ class ToolGateway:
         if d is None:
             return self._facts.pop(key, None)
         ok, checked, lines = self.check(d)
-        if checked == "done" and (d.sample_outcomes or d.to == "reactor"):
+        if checked == "done" and d.sample_outcomes:
             missing = self._unmet_contract(d, d.step)
             if not ok:
                 missing.append("another job in this delegation has not completed successfully")
@@ -257,9 +239,6 @@ class ToolGateway:
         captured = delegation.contracts.get(step_id, {})
         current = next((completion_contract(s) for s in self._plan() if s.get("id") == step_id), None)
         missing = unmet_sample_outcomes(self.store, self.bench or {}, captured.get("sample_outcomes") or [])
-        if captured.get("owner") == "reactor":
-            missing += unmet_reactor_outcome(self.store, self.bench or {}, captured.get("reactor_outcome"),
-                                             after_event_id=delegation.started_event, project_id=self.project_id)
         if current != captured:
             missing.append("the active step's completion conditions changed; review the current goal")
         return missing
@@ -291,51 +270,24 @@ class ToolGateway:
             f"{len(good)} successful tool call(s)."]
 
     def _check_reactor(self, d: _Delegation) -> tuple[bool, str, list[str]]:
-        submitted = [c for c in d.calls if "reactor" in c["tool"]
-                     and c["data"].get("job_id") and c["data"].get("flow")]
-        if not submitted:
-            return False, "pending", ["Reactor returned without submitting a reactor job."]
-        ok, status, lines = self._check_jobs(d)
-        if not ok:
-            return ok, status, lines
-        workflow_jobs = [c for c in submitted if c["data"]["flow"] == "reactor_material_metal"]
-        if workflow_jobs:
-            from qumus2.records.material_metal import workflow_result_errors
-            from qumus2.records.material_metal_arguments import argument_errors, argument_feedback
-            from qumus2.records.material_metal_simulation import simulation_result_errors
+        """A reactor delegation from its reactor tool results (qumus2/reactor/tools.py):
+        done when the last reactor action succeeded, pending while a person is asked
+        or after a refusal, failed after an unclear outcome."""
+        from qumus2.reactor.tools import REACTOR_TOOLS
 
-            job_id = workflow_jobs[-1]["data"]["job_id"]
-            run = self.store.get_run(job_id)
-            contract = {**d.contracts.get(d.step, {}), "id": d.step}
-            if errors := argument_errors(self.store, self.project_id, contract, phase="complete", run=run):
-                return False, "pending", [*lines, "Reactor job does not satisfy the delegated arguments: " + argument_feedback(errors)]
-            state = self.store.get_project(self.project_id)["state"]
-            simulated = run["params"].get("protocol_id") == "qualitative-material-metal-v1"
-            result = state.get("reactor_simulation_result" if simulated else "reactor_workflow_result") or {}
-            errors = (simulation_result_errors(self.store, self.project_id, result, bench=self.bench) if simulated
-                      else workflow_result_errors(self.store, self.project_id, result))
-            if result.get("evidence_job_id") != job_id or errors:
-                return False, "pending", [*lines, "No matching material-metal simulation/workflow result was accepted.", *errors]
-            lines.append("Qualitative device-simulation goal verified; real chemistry remains unverified." if simulated
-                         else "Abstract software workflow verified; physical assembly and chemistry remain unverified.")
-        growth = [c for c in submitted if c["data"]["flow"] in ("reactor_growth", "reactor_reaction")]
-        if growth:
-            last_job = growth[-1]["data"]["job_id"]
-            accepted = any(c["tool"] in ("submit_reactor_result", "submit_reactor_pair_result") and c["status"] == "ok"
-                           and c["data"].get("accepted") is True
-                           and c["data"].get("evidence_job_id") == last_job for c in d.calls)
-            project = self.store.get_project(self.project_id) if self.project_id else None
-            state = (project or {"state": {}})["state"]
-            current = state.get("reactor_result") or {}
-            chip = self.store.get_sample(current.get("chip_id", "")) or {"props": {}}
-            accepted &= (current.get("evidence_job_id") == last_job
-                         and current.get("goal") == state.get("reactor_goal")
-                         and current.get("observation") == chip["props"].get("reactor_result")
-                         and not chip["props"].get("reactor_state_uncertain"))
-            if not accepted:
-                return False, "pending", [*lines, "No current code-checked reactor target was accepted."]
-            lines.append("The current synthetic reactor target was code-checked and accepted.")
-        return True, "done", lines
+        calls = [c for c in d.calls if c["tool"] in REACTOR_TOOLS]
+        actions = [c for c in calls if c["tool"] != "reactor_status"]
+        if not actions:
+            return False, "pending", ["Reactor returned without a reactor action."]
+        lines = [f"{c['tool']}: {c['status']}: {c['summary']}" for c in actions[-6:]]
+        last = actions[-1]
+        if last["status"] in _GOOD:
+            return True, "done", lines
+        if last["status"] == "needs_attention":
+            return False, "failed", [*lines, "A reactor outcome is unclear; read reactor_status before anything moves."]
+        if last["status"] == "pending":
+            return False, "pending", [*lines, "Waiting for the person's handover."]
+        return False, "pending", lines
 
     def _step_for_flow(self, d: _Delegation, flow: str) -> str | None:
         """The hands' plan step a flow belongs to: the delegated step when its
@@ -524,7 +476,8 @@ class ToolGateway:
         parsed = spec.args_model.model_validate(args)
         ctx = ToolContext(store=self.store, jobs=self.jobs, agent=agent,
                           project_id=self.project_id, extra={"bench": self.bench, "registry": self.registry,
-                              "delegation_step_id": self._active_delegation_step(agent)})
+                              "delegation_step_id": self._active_delegation_step(agent),
+                              "stations": self.stations})
         try:
             return await spec.handler(parsed, ctx)
         except QumusError as e:

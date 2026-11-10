@@ -124,7 +124,9 @@ def test_job_controls_unknown_flows_and_stop(services):
     assert s.jobs.wait(rid, 5).status == "succeeded"
     assert s.jobs.complete_experiment(s.project_id, "done")["completed"] is True
     s.jobs.stop_all()
-    assert "reactor_growth" in s.jobs.flow_names() and "put_records" not in s.jobs.flow_names()
+    assert "stack_device" in s.jobs.flow_names() and "put_records" not in s.jobs.flow_names()
+    # the sim-era reactor job flows are retired: the reactor is a Lab Console station now
+    assert "reactor_growth" not in s.jobs.flow_names()
 
 
 def test_a_fresh_laboratory_restarts_the_mirror(tmp_path):
@@ -224,39 +226,39 @@ def test_the_launcher_only_starts_a_sim_lab_on_this_computer(tmp_path):
 
 def test_one_laboratory_behind_several_windows_is_mirrored_once(tmp_path):
     lab = make_fake_lab()
-    s = build_services(tmp_path / "qumus.db", stations=lab.stations(records_from=["stacking", "reactor"]))
+    s = build_services(tmp_path / "qumus.db", stations=lab.stations(records_from=["stacking", "exfoliation"]))
     try:
-        rid = s.jobs.submit("observe_reactor", {"chip_id": "reactor_chip_01"}, project_id=s.project_id)
+        rid = s.jobs.submit("exfoliate_chips", {}, project_id=s.project_id)
         assert s.jobs.wait(rid, 5).status == "succeeded"
         s.jobs.sync()
         mirrored = [e for e in s.store.events_after(0, limit=10000)
                     if e.kind == "job.status" and e.run_id == rid and "lab_event_id" in e.payload]
-        assert len(mirrored) == 1  # same lab_id: the reactor window's feed is skipped
+        assert len(mirrored) == 1  # same lab_id: the exfoliation window's feed is skipped
         assert s.jobs.mirror.mirrors[1].duplicate and s.jobs.mirror.online
     finally:
         _close(s)
         lab.close()
 
 
-def test_a_separate_reactor_station_has_its_own_feed(tmp_path):
+def test_a_separate_station_has_its_own_feed(tmp_path):
     from qumus2.stations.fake_lab import FakeLab
 
     lab = make_fake_lab()
-    lab.services.pop("reactor").close()  # the Hall-bar lab without its reactor window
-    bridge = FakeLab(modules=("reactor",)).start()  # e.g. the real-reactor bridge, its own store
-    urls = {**lab.urls, "reactor": bridge.urls["reactor"]}
-    st = config.from_urls(urls, records_from=["stacking", "reactor"])
+    lab.services.pop("exfoliation").close()  # the Hall-bar lab without its exfoliation window
+    other = FakeLab(modules=("exfoliation",)).start()  # a separate computer with its own store
+    urls = {**lab.urls, "exfoliation": other.urls["exfoliation"]}
+    st = config.from_urls(urls, records_from=["stacking", "exfoliation"])
     s = build_services(tmp_path / "qumus.db", stations=st)
     try:
         assert len(s.store.list_samples()) == 20  # the Hall-bar ledger from the primary feed
-        rid = s.jobs.submit("observe_reactor", {"chip_id": "reactor_chip_01"}, project_id=s.project_id)
-        assert bridge.commands[-1][:2] == ("reactor", "observe_reactor")
-        assert s.jobs.wait(rid, 5).status == "succeeded"  # the run row came from the bridge's feed
+        rid = s.jobs.submit("exfoliate_chips", {}, project_id=s.project_id)
+        assert other.commands[-1][:2] == ("exfoliation", "exfoliate_chips")
+        assert s.jobs.wait(rid, 5).status == "succeeded"  # the run row came from the other feed
         assert not s.jobs.mirror.mirrors[1].duplicate
-        assert s.store.get_meta("mirror_records_lab_id:reactor") == bridge.lab_id
-        assert len(s.store.list_samples()) == 20  # the bridge's fresh lab_id did not clear the ledger
-        assert not bridge.put_records  # put_records goes to the primary feed only
+        assert s.store.get_meta("mirror_records_lab_id:exfoliation") == other.lab_id
+        assert len(s.store.list_samples()) == 20  # the other fresh lab_id did not clear the ledger
+        assert not other.put_records  # put_records goes to the primary feed only
     finally:
         _close(s)
-        bridge.close()
+        other.close()
         lab.close()

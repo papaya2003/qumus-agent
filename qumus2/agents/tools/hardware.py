@@ -302,8 +302,10 @@ def job_result(st: JobStatus, recovered: list[str] | None = None, *, store: Any 
                           (" " + "; ".join(notes) if notes else ""), data=data, images=shown)
     if st.status == "paused":
         return ToolResult(status="paused", summary=f"job {st.run_id} paused: the user pressed "
-                          "Stop. It goes on when the user presses Continue (or retry_job "
-                          "resumes it); nothing failed.", data=data)
+                          "Stop, or this brain lost control of the station (its lease ran "
+                          "out). The job may still hold a chip on the stage. Resume it with "
+                          "retry_job before sending another job to that module; nothing "
+                          "failed.", data=data)
     return ToolResult(status="needs_attention", summary=f"job {st.run_id} {st.status}"
                       + (" (the lab process crashed during it)" if recovered else ""),
                       data=data, images=images)

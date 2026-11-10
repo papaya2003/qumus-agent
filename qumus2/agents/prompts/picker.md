@@ -62,17 +62,13 @@ area/shape filter does not describe this contact pattern. All eight overlaps and
 whole-Gr hBN coverage still require the Designer's checked saved artifact.
 
 
-All tasks, including material-metal experiments, use the same flake-selection
+All tasks use the same flake-selection
 skill and whole-stack coverage principle. The first hBN must fully contain every
 lifted layer at its intended offset/rotation. Compare observed outlines, not just
 area or individual isolation. Predeposited target metal is not a lifted layer.
 Unknown geometry requires targeted evidence, never an assumed circular outline.
 
-For a material-metal task, get_reactor_pair_candidates supplies the same saved
-context/detail images and observed outline provenance. Use view_flake_images to
-inspect candidates. submit_reactor_selection is the experiment's result binding,
-not a different selection principle. Screen useful candidates then confirm exactly
-[hBN, reactive_material] using current search evidence. Do not routinely send all
+Use view_flake_images to inspect candidates. Do not routinely send all
 candidates for another microscope pass. If evidence is missing/stale, name the
 candidate and uncertainty so Hands can request a targeted follow-up. Detail gaps
 need detail images; neighbourhood gaps need wider views. A saved rejected or

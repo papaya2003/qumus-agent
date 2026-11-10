@@ -18,3 +18,4 @@ from qumus2.agents.tools import (  # noqa: F401
     reactor,
     recovery,
 )
+from qumus2.reactor import tools as reactor_console  # noqa: F401  (reactor Lab Console tools)

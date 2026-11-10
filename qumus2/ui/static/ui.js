@@ -51,11 +51,11 @@ export const avatar = (a, active) => h('span', { class: 'ag' + (active ? ' activ
 
 export const FLOW_LABELS = { place_chip_on_transfer_stage: 'Place chip on the stage', exfoliate_chips: 'Exfoliate onto chips',
   search_chip: 'Search a chip for flakes', revisit_chip: 'Revisit flakes on a chip', stack_device: 'Stack a device',
-  inspect_bench: 'Inspect the bench', load_reactor_chip: 'Load a reactor chip',
-  reactor_growth: 'Observe a legacy growth window', reactor_reaction: 'React two prepared flakes',
-  observe_reactor: 'Observe the reactor',
-  position_reactor_slot: 'Position the reactor assembly', shutdown_reactor: 'Disable reactor targets',
-  unload_reactor_chip: 'Cool and store the reactor chip' };
+  inspect_bench: 'Inspect the bench',
+  reactor_handover_in: 'Person puts a chip into the reactor tray', reactor_load: 'Load the chip into the crucible',
+  reactor_heat: 'Run a furnace program', reactor_snapshot: 'Reactor microscope picture',
+  reactor_record: 'Record the reactor microscope', reactor_unload: 'Unload the chip to the tray',
+  reactor_handover_out: 'Person takes the chip from the reactor tray', reactor_stop: 'Stop the reactor' };
 export const flowLabel = f => FLOW_LABELS[f] || (f || 'job').replace(/_/g, ' ');
 // a job in words, with what it works on: "Search chip_001 for flakes"
 export function jobTitle(flow, params) {

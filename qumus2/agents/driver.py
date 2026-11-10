@@ -15,6 +15,16 @@ Stop and Continue (UI buttons):
 A message sent after Stop without Continue reaches the orchestrator with a note
 that jobs are paused (they go on at Continue or when it retries them).
 
+Model service outage (HTTP 429/5xx or no connection, after the SDK's own
+per-request retries): the turn ends with `agent.error`; the driver then waits
+(`agent.outage_wait`: the provider's retry-after, at least the next step of
+OUTAGE_WAITS_S, whose last step repeats) and continues the same conversation
+with a note saying so. By default it keeps trying until the service is back
+(unattended runs last days); QUMUS_OUTAGE_MAX_HOURS sets a total limit. Waiting
+costs nothing: refused requests are not billed. Stop cancels the wait; a spent
+budget ends it (sends without any reply keep their reservation, so endless
+timeouts run into the budget cap). Any other error still ends the turn.
+
 Once the runtime reports its run budget spent (`budget_exhausted`, OpenAIRuntime
 with a --budget), messages are dropped (`user.dropped`) instead of sent.
 """
@@ -22,6 +32,7 @@ with a --budget), messages are dropped (`user.dropped`) instead of sent.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -32,6 +43,22 @@ from qumus2.runtime.jobs import JobService
 from qumus2.runtime.store import RunStore
 
 MESSAGE_KINDS = ("message", "plan_change", "veto")
+
+#: waits (s) before each automatic continue after a model service outage; the
+#: last one repeats until the service is back or QUMUS_OUTAGE_MAX_HOURS passes.
+#: A turn that ran longer than OUTAGE_RESET_S before failing made progress, so
+#: the waits start short again.
+OUTAGE_WAITS_S = (15.0, 30.0, 60.0, 120.0, 240.0, 480.0, 600.0)
+OUTAGE_MAX_WAIT_S = 900.0
+OUTAGE_RESET_S = 300.0
+
+
+def outage_max_s() -> float | None:
+    """Total time to keep waiting for the model service; None = no limit."""
+    raw = os.environ.get("QUMUS_OUTAGE_MAX_HOURS", "").strip()
+    if not raw or float(raw) <= 0:
+        return None
+    return float(raw) * 3600.0
 
 
 class ConversationDriver:
@@ -44,6 +71,11 @@ class ConversationDriver:
         self._turn: asyncio.Task[None] | None = None
         #: Stop pressed and nothing said since: the next message carries a note
         self._note_due = False
+        #: the sleep before an automatic continue after a model outage (Stop cancels it)
+        self._outage_sleep: asyncio.Task[None] | None = None
+        #: waits used and the total limit (None = none), overridable in tests
+        self.outage_waits_s: tuple[float, ...] = OUTAGE_WAITS_S
+        self.outage_max_s: float | None = outage_max_s()
 
     async def tick(self) -> None:
         for s in self.inbox.drain(kinds=("stop",)):
@@ -73,6 +105,8 @@ class ConversationDriver:
 
     async def _stop(self, ins: dict[str, Any]) -> None:
         dropped = self._drop("Stop pressed before delivery")
+        if self._outage_sleep is not None:
+            self._outage_sleep.cancel()
         await self.runtime.interrupt()
         await asyncio.to_thread(self.jobs.stop_all)
         self._note_due = True
@@ -109,16 +143,62 @@ class ConversationDriver:
 
     async def _run(self, fn: Callable[[str], Awaitable[None]], text: str) -> None:
         """Run one turn; an exception (gateway down, bad key, SDK crash) is
-        shown in the UI as `agent.error` instead of vanishing."""
-        try:
-            await fn(text)
-        except Exception as e:
-            recorded = self.store.events_after(e.event_id - 1, limit=1) if isinstance(e, ReportedAgentError) else []
-            if not (recorded and recorded[0].id == e.event_id and recorded[0].kind == "agent.error"
-                    and recorded[0].payload.get("error") == str(e)):
-                self.store.emit("agent.error", {"error": scrub_text(str(e))[:2000],
-                                                "type": type(e).__name__}, agent="orchestrator")
-            raise
+        shown in the UI as `agent.error` instead of vanishing. After a model
+        service outage, wait and continue the same conversation (module doc)."""
+        loop = asyncio.get_running_loop()
+        failures, waited = 0, 0.0
+        while True:
+            started = loop.time()
+            try:
+                await fn(text)
+                return
+            except Exception as e:
+                recorded = self.store.events_after(e.event_id - 1, limit=1) if isinstance(e, ReportedAgentError) else []
+                if not (recorded and recorded[0].id == e.event_id and recorded[0].kind == "agent.error"
+                        and recorded[0].payload.get("error") == str(e)):
+                    self.store.emit("agent.error", {"error": scrub_text(str(e))[:2000],
+                                                    "type": type(e).__name__}, agent="orchestrator")
+                outage = getattr(e, "outage", None)
+                if loop.time() - started > OUTAGE_RESET_S:
+                    failures, waited = 0, 0.0
+                step = self.outage_waits_s[min(failures, len(self.outage_waits_s) - 1)]
+                hint = (outage or {}).get("retry_after_s") or 0.0
+                wait = min(max(step, float(hint)), OUTAGE_MAX_WAIT_S)
+                limit = self.outage_max_s
+                if (not outage or getattr(self.runtime, "budget_exhausted", False)
+                        or (limit is not None and waited + wait > limit)):
+                    if outage:
+                        self.store.emit("agent.outage_gave_up", {
+                            "status": outage.get("status"), "attempts": failures, "waited_s": waited,
+                            "text": "Model service still unavailable; automatic continue stopped. "
+                                    "Send a message or press Continue to go on."}, agent="orchestrator")
+                    raise
+                failures += 1
+                waited += wait
+                self.store.emit("agent.outage_wait", {
+                    "status": outage.get("status"), "retry_after_s": outage.get("retry_after_s"),
+                    "wait_s": wait, "attempt": failures, "waited_s": waited, "max_s": limit,
+                    "text": f"Model service unavailable (HTTP {outage.get('status') or 'no connection'}); "
+                            f"continuing in {wait:.0f} s (attempt {failures}, "
+                            f"{waited / 60:.0f} min waited so far)."},
+                    agent="orchestrator")
+            self._outage_sleep = asyncio.create_task(asyncio.sleep(wait))
+            try:
+                await self._outage_sleep
+            except asyncio.CancelledError:
+                if self._outage_sleep.cancelled() and not asyncio.current_task().cancelling():
+                    self.store.emit("agent.outage_cancelled", {"reason": "Stop pressed"}, agent="orchestrator")
+                    return
+                raise
+            finally:
+                self._outage_sleep = None
+            if getattr(self.runtime, "budget_exhausted", False):
+                return
+            fn = self.runtime.continue_turn
+            text = (f"[System note: the model service was unavailable (HTTP "
+                    f"{outage.get('status') or 'no connection'}), so your last turn ended early; "
+                    f"waited {wait:.0f} s. Continue the task from where you stopped. Check the "
+                    "current jobs and samples first; hardware jobs kept running meanwhile.]")
 
     async def run_forever(self) -> None:
         while True:

@@ -302,3 +302,51 @@ def test_event_cursor_detects_service_restart(svc):
         pytest.skip("bare-list events carry no cursor")
     later = c.events(page.next)
     assert later.restarted and later.next == 0
+
+
+def test_keeper_rides_out_slow_renewals_but_not_a_dead_service(svc):
+    svc.lease_seconds = 1.5
+    c = client_for(svc)
+    keeper = c.lease_keeper(interval_s=0.1)
+    keeper.start()
+    real, fails = keeper._renew, {"n": 3}
+
+    def flaky():
+        if fails["n"] > 0:
+            fails["n"] -= 1
+            raise TransportError("timed out")
+        return real()
+
+    keeper._renew = flaky
+    time.sleep(0.8)
+    assert not keeper.lost.is_set() and keeper.missed == 3 and keeper.renewals > 0
+
+    def dead():
+        raise TransportError("timed out")
+
+    keeper._renew = dead
+    assert keeper.lost.wait(3)
+    with pytest.raises(LeaseLost):
+        keeper.check()
+    keeper.release_on_exit = False
+
+
+def test_keeper_refusal_is_final_at_once(svc):
+    svc.lease_seconds = 5
+    c = client_for(svc)
+    keeper = c.lease_keeper(interval_s=0.05)
+    keeper.start()
+
+    def refused():
+        raise Conflict("lease held by intruder", status=409)
+
+    keeper._renew = refused
+    assert keeper.lost.wait(0.5) and keeper.missed == 0
+    keeper.release_on_exit = False
+
+
+def test_describe_reads_sim_lab_lease_name():
+    from qumus2.contract.models import ServiceDescription
+
+    raw = {"service": "s", "contract": 1, "module": "stacking", "lease_s": 15, "commands": {}}
+    assert ServiceDescription.from_raw(raw).lease_seconds == 15.0

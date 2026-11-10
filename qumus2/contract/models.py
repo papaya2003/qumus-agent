@@ -127,7 +127,8 @@ class ServiceDescription:
             contract_number = int(contract)
         except (TypeError, ValueError):
             contract_number = -1
-        lease = raw.get("lease_seconds", 3)
+        # the Qumus sim lab names it lease_s; the reactor/ADR dialect lease_seconds
+        lease = raw.get("lease_seconds", raw.get("lease_s", 3))
         lease_seconds = float(lease) if isinstance(lease, (int, float)) and lease > 0 else 3.0
         zones = raw.get("zones") if isinstance(raw.get("zones"), list) else []
         header = raw.get("client_header")

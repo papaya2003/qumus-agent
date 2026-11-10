@@ -13,6 +13,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -112,8 +113,19 @@ def unique_image_input(data: Any, max_images: int = 4, *, diagnostic_observer: A
                   'get_project_context result below. The original is retained in the run record.]'}
                  if isinstance(item, dict) and item.get('type') == 'function_call_output'
                  and item.get('call_id') in old else item for item in items]
-    collect(items)
-    retained = set(list(dict.fromkeys(reversed(images)))[:max(1, max_images)])
+    # Images the latest tool results just returned are always shown: a picker that
+    # retrieves 6 views to compare must see all 6 (bounding them made it retrieve
+    # again and again). The bound applies to older images only.
+    tail = len(items)
+    while tail > 0 and isinstance(items[tail - 1], dict) \
+            and items[tail - 1].get('type') == 'function_call_output':
+        tail -= 1
+    collect(items[tail:])
+    fresh = set(images)
+    images.clear()
+    collect(items[:tail])
+    older = [i for i in dict.fromkeys(reversed(images)) if i not in fresh]
+    retained = fresh | set(older[:max(0, max_images - len(fresh))] if fresh else older[:max(1, max_images)])
     actions = {"superseded_snapshots": max(0, len(results) - 1),
                "omitted_images": 0, "duplicate_images": 0}
     if compacted_catalogues:
@@ -332,6 +344,63 @@ def http_timeout_s() -> float:
 
 #: HTTP replies that mean the provider did not process the request.
 REFUSED_UNPROCESSED = frozenset({429, 503})
+#: HTTP replies after which the model service is worth asking again later
+#: (overloaded, rate limited, gateway/upstream failure).
+OUTAGE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def http_max_retries_from_env(default: int) -> int:
+    """QUMUS_OPENAI_HTTP_RETRIES overrides the per-request HTTP retry count."""
+    raw = os.environ.get("QUMUS_OPENAI_HTTP_RETRIES", "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value < 0:
+        raise ValueError("QUMUS_OPENAI_HTTP_RETRIES must be a nonnegative integer")
+    return value
+
+
+_RETRY_AFTER_TEXT = re.compile(r'retry-after(-ms)?\\?"?\s*[:=]\s*\\?"?(\d+(?:\.\d+)?)', re.I)
+
+
+def _retry_after_s(exc: BaseException) -> float | None:
+    """Seconds the provider asked us to wait: headers first, then the error text
+    (the gateway forwards the upstream headers inside its JSON message)."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or {}
+    try:
+        if headers.get("retry-after-ms"):
+            return float(headers["retry-after-ms"]) / 1000.0
+        if headers.get("retry-after"):
+            return float(headers["retry-after"])
+    except (TypeError, ValueError):
+        pass
+    found = [(m.group(1), float(m.group(2))) for m in _RETRY_AFTER_TEXT.finditer(str(exc))]
+    for ms, value in found:
+        if not ms:
+            return value
+    return found[0][1] / 1000.0 if found else None
+
+
+def model_outage(exc: BaseException) -> dict[str, Any] | None:
+    """{"status", "retry_after_s"} when `exc` (or what it wraps) means the model
+    service was unavailable rather than our request being wrong; else None."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover - the SDK runtime needs openai anyway
+        return None
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, openai.APIStatusError):
+            if current.status_code in OUTAGE_STATUS:
+                return {"status": current.status_code, "retry_after_s": _retry_after_s(current)}
+            return None
+        if isinstance(current, openai.APIConnectionError):  # includes APITimeoutError
+            return {"status": None, "retry_after_s": None}
+        current = current.__cause__ or current.__context__
+    return None
 
 class OpenAIRuntime:
     # Keep the existing UI/event contract; provider identifies which SDK backs it.
@@ -344,7 +413,7 @@ class OpenAIRuntime:
         if type(http_max_retries) is not int or http_max_retries < 0:
             raise ValueError("http_max_retries must be a nonnegative integer")
         self._pre_send_admission = pre_send_admission
-        self._http_max_retries = http_max_retries
+        self._http_max_retries = http_max_retries_from_env(http_max_retries)
         self.gateway, self.store, self.creds = gateway, gateway.store, creds
         state = (self._project() or {}).get('state', {})
         self._context_defaults = context_defaults(creds)
@@ -532,7 +601,9 @@ class OpenAIRuntime:
         cap = float(os.environ.get("QUMUS_MAX_BUDGET_USD") or self.cfg.get("max_budget_usd", 40))
         if cap <= 0 or self._turn_cost >= cap:
             raise self._budget_error("turn budget exhausted")
-        if self._turn_tokens >= int(self.cfg.get("openai", {}).get("max_total_tokens", 2_000_000)):
+        token_cap = int(os.environ.get("QUMUS_OPENAI_MAX_TOTAL_TOKENS")
+                        or self.cfg.get("openai", {}).get("max_total_tokens", 2_000_000))
+        if self._turn_tokens >= token_cap:
             raise self._budget_error("turn token budget exhausted")
         # A USD cap with unknown gateway prices would be a false guarantee.
         choice = self.agent_model(role)
@@ -615,8 +686,17 @@ class OpenAIRuntime:
         class Hooks(RunHooks):
             async def on_llm_start(self, context, agent, system_prompt, input_items):
                 rt._check_budget(agent.name)
-                if rt._ledger is not None:
+                if rt._ledger is not None or rt.run_budget_usd is not None:
                     allowance = rt._request_allowance(agent, system_prompt, input_items)
+                    # the run budget also holds back what this request may cost: a
+                    # check of what was spent alone let the last request overshoot
+                    if rt.run_budget_usd is not None \
+                            and rt.spent_usd() + allowance > rt.run_budget_usd:
+                        raise rt._budget_error(
+                            f"run budget cannot cover another model request (spent "
+                            f"${rt.spent_usd():.2f} of ${rt.run_budget_usd:.2f}, request "
+                            f"reserve ${allowance:.2f})")
+                if rt._ledger is not None:
                     cap = min(rt.creds.test_budget_usd, rt.run_budget_usd or rt.creds.test_budget_usd)
                     try:
                         rt._reservations[agent.name] = rt._ledger.reserve(rt._budget_scope, allowance, cap)
@@ -960,10 +1040,12 @@ class OpenAIRuntime:
                 from qumus2.agents.runtime import ReportedAgentError
 
                 message = scrub_text(str(exc), [self.creds.api_key])
+                outage = model_outage(exc)
                 event_id = self.store.emit("agent.error", {"provider": "openai", "type": type(exc).__name__,
                                 "session_id": self.session_id, "project_id": self.gateway.project_id,
-                                "error": message}, agent=ORCHESTRATOR)
-                raise ReportedAgentError(message, event_id) from None
+                                "error": message, **({"outage": outage} if outage else {})},
+                                agent=ORCHESTRATOR)
+                raise ReportedAgentError(message, event_id, outage=outage) from None
         finally:
             self._composition_tasks.pop(ORCHESTRATOR, None)
             self.gateway.turn_finished(ok=ok)

@@ -112,8 +112,12 @@ def ensure_simlab(stations: Stations, *, seed: int | None = None, data_dir: str 
     root = Path(data_dir).resolve() / "simlab"
     root.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    db = root / f"lab-{stamp}.db"
     log = root / f"lab-{stamp}.log"
+    db = root / f"lab-{stamp}.db"
+    if "--resume" in (extra_args or []):
+        # qumus-simlab restores a save point only into <new folder>/qumus.db
+        db = root / f"lab-{stamp}" / "qumus.db"
+        db.parent.mkdir(parents=True, exist_ok=False)
     cmd = [simlab_python(simlab_dir), "-m", "qumus_simlab", "serve", "--db", str(db)]
     if seed is not None:
         cmd += ["--seed", str(seed)]

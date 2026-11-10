@@ -94,9 +94,11 @@ def write_clip(frames: list[Path], holds: list[int], out: Path) -> None:
     try:
         for path, hold in zip(frames, holds, strict=True):
             with Image.open(path) as image:
-                rgb = np.asarray(image.convert("RGB"))
-            if rgb.shape[:2] != (height, width):
-                raise ValueError(f"{path.name} differs in size from the clip")
+                image = image.convert("RGB")
+                if image.size != (width, height):
+                    # a capture at another resolution in the same motion: fit the clip
+                    image = image.resize((width, height), Image.Resampling.LANCZOS)
+                rgb = np.asarray(image)
             if (pad_w, pad_h) != (width, height):
                 rgb = np.pad(rgb, ((0, pad_h-height), (0, pad_w-width), (0, 0)), mode="edge")
             data = np.ascontiguousarray(rgb).tobytes()

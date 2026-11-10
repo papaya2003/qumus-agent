@@ -21,9 +21,12 @@ Qumus rules in notes/night-20261108/contract-v1-qumus.md):
 
 from __future__ import annotations
 
+import faulthandler
 import http.client
 import ipaddress
 import json
+import logging
+import os
 import threading
 import time
 import urllib.error
@@ -61,6 +64,9 @@ DEFAULT_CLIENT_HEADER = "X-Qumus-Client"
 #: A guard sees every command before it is sent and raises to refuse it.
 CommandGuard = Callable[[str, dict[str, Any], CommandSpec], None]
 
+
+_log = logging.getLogger(__name__)
+_STALL_DUMP = bool(os.environ.get("QUMUS_LEASE_STALL_DUMP"))
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: D102
@@ -379,8 +385,10 @@ class LeaseKeeper:
     The thread renews every ``interval_s`` (default: a third of the lease, at
     most 1 s). It uses ``api/renew`` when describe advertises
     ``renew_only_heartbeat`` (reactor services), else ``api/heartbeat``.
-    On the first failed renewal it sets ``lost``, stores the error, calls
-    ``on_lost(error)`` and exits. It never re-acquires: after a loss the service
+    A renewal that gets no reply or a 5xx is retried while the lease granted at
+    the last good renewal can still be alive (a busy service answers late); a
+    refusal, or no good renewal for a whole lease, sets ``lost``, stores the
+    error, calls ``on_lost(error)`` and exits. It never re-acquires: after a loss the service
     has stopped motion and a caller must look at the state first.
     """
 
@@ -394,6 +402,8 @@ class LeaseKeeper:
         self.lost = threading.Event()
         self.error: ContractError | None = None
         self.renewals = 0
+        self.missed = 0
+        self.lease_s = 3.0
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -405,8 +415,9 @@ class LeaseKeeper:
         if self._thread is not None:
             raise RuntimeError("lease keeper already started")
         description = self.client.describe()
+        self.lease_s = float(description.lease_seconds)
         if self.interval_s is None:
-            self.interval_s = max(0.2, min(1.0, description.lease_seconds / 3.0))
+            self.interval_s = max(0.2, min(1.0, self.lease_s / 3.0))
         self.client.heartbeat()
         self._renew = (self.client.renew if description.renew_only_heartbeat
                        else self.client.heartbeat)
@@ -416,11 +427,44 @@ class LeaseKeeper:
         return self
 
     def _loop(self) -> None:
+        try:
+            self._run()
+        except BaseException:  # never die silently: a dead keeper lets the lease lapse
+            _log.exception("lease %s: keeper thread crashed", self.client.name)
+            raise
+        finally:
+            if _STALL_DUMP:
+                faulthandler.cancel_dump_traceback_later()
+
+    def _run(self) -> None:
+        last_ok = time.monotonic()
         while not self._stop.wait(self.interval_s):
+            started = time.monotonic()
+            if started - last_ok > max(5.0, self.lease_s / 2):
+                # the thread itself was not scheduled (or a renewal hung): say so
+                _log.warning("lease %s: %.1f s since the last good renewal", self.client.name,
+                             started - last_ok)
             try:
                 self._renew()
                 self.renewals += 1
+                last_ok = time.monotonic()
+                if last_ok - started > 2.0:
+                    _log.warning("lease %s: renewal took %.1f s", self.client.name,
+                                 last_ok - started)
+                if _STALL_DUMP:
+                    # QUMUS_LEASE_STALL_DUMP: if no renewal follows within half a lease, a
+                    # C thread prints every Python thread's stack (works with the GIL held)
+                    faulthandler.dump_traceback_later(max(5.0, self.lease_s / 2), exit=False)
             except ContractError as exc:
+                # A busy service may answer late (no reply / 5xx). Keep renewing while the
+                # lease it granted at the last good renewal can still be alive; a refusal
+                # (4xx: someone else holds it, or it expired) is final.
+                transient = exc.status is None or exc.status >= 500
+                if transient and time.monotonic() - last_ok < self.lease_s - self.interval_s:
+                    self.missed += 1
+                    _log.warning("lease %s: renewal failed (%s); retrying", self.client.name, exc)
+                    continue
+                _log.warning("lease %s lost: %s", self.client.name, exc)
                 self.error = LeaseLost(f"lease renewal failed: {exc}", status=exc.status,
                                        url=exc.url)
                 self.lost.set()

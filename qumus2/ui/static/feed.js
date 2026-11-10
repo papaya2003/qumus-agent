@@ -506,7 +506,18 @@ export class Feed {
       case 'agent.error':
         for (const m of [...this.cards.values()]) this.close(m, 'stopped', e);
         this.append(h('div', { class: 'banner item danger' }, h('b', { text: 'Agent stopped with an error. ' }),
-          p.error || p.type || 'unknown error', h('div', { class: 'note', text: 'Nothing else was sent. Send a message to try again.' })));
+          p.error || p.type || 'unknown error', h('div', { class: 'note', text: p.outage
+            ? 'The model service is unavailable; Qumus waits and continues by itself.'
+            : 'Nothing else was sent. Send a message to try again.' })));
+        break;
+      case 'agent.outage_wait':
+        this.append(h('div', { class: 'sys item', text: p.text }));
+        break;
+      case 'agent.outage_cancelled':
+        this.append(h('div', { class: 'sys item', text: 'Automatic continue cancelled (Stop pressed).' }));
+        break;
+      case 'agent.outage_gave_up':
+        this.append(h('div', { class: 'banner item danger' }, p.text));
         break;
       case 'agent.turn_end': {
         const q = this.cards.get('orchestrator');

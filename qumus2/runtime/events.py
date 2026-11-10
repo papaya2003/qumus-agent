@@ -48,7 +48,11 @@ EVENT_KINDS: dict[str, str] = {
     "agent.request_failure": "provider, session_id, call_id, request_id, model, api, attempt, "
                              "failure_kind, exception_type, http_status, provider_request_id, provider_error_code "
                              "(sanitized failure of one attempt, before retries; no messages or cost)",
-    "agent.error": "error, type, session_id, project_id  (a turn raised; retained after a later scoped recovery)",
+    "agent.error": "error, type, session_id, project_id, outage?{status, retry_after_s}  (a turn raised; retained after a later scoped recovery)",
+    "agent.outage_wait": "status, retry_after_s, wait_s, attempt, waited_s, max_s, text  (model service "
+                         "unavailable; the driver continues the same conversation after wait_s)",
+    "agent.outage_cancelled": "reason  (Stop pressed during an outage wait)",
+    "agent.outage_gave_up": "status, attempts, waited_s, text  (outage limit reached or budget spent; a person must go on)",
     "user.dropped": "instruction_id, text  (Stop pressed before the message was delivered)",
     # Stop / Continue (agents/driver.py)
     "system.stopped": "instruction_id, dropped[]  (interrupted; every job pauses at a safe point)",

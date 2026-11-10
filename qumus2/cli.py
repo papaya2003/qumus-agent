@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
+from typing import Any
 
 
 def _serve(args: argparse.Namespace) -> None:
@@ -22,12 +24,43 @@ def _serve(args: argparse.Namespace) -> None:
     from qumus2.ui.app import create_app
     from qumus2.ui.recording import attach_recorder
 
-    services = build_services(args.db, stations=args.stations, scenario=args.scenario,
+    scenario: Any = args.scenario
+    seed = args.seed
+    simlab_args = ["--target-bundle", args.target_bundle] if args.target_bundle else None
+    resumed = None
+    if args.resume:
+        from qumus2.agents.scripted import load_scenario
+        from qumus2.stations import config as stations_config
+        from qumus2.stations.launcher import sim_offline
+        from qumus2.stations.savepoint import restore_savepoint, resume_scenario
+
+        st = stations_config.load(args.stations)
+        if args.no_simlab or set(sim_offline(st)) != {m for m, s in st.modules.items() if s.kind == "sim"}:
+            raise SystemExit("--resume starts qumus-simlab from the save point itself: stop the running "
+                             "qumus-simlab first and do not pass --no-simlab")
+        resumed = restore_savepoint(args.resume, args.db)
+        # the lab half carries its own seed and target
+        seed, simlab_args = None, ["--resume", str(resumed["lab_dir"])]
+        scenario = resume_scenario(load_scenario(args.scenario))
+        print(f"resuming from {resumed['resumed']['savepoint']} (event {resumed['last_event_id']}, "
+              f"saved {resumed['saved_at']}, code {resumed.get('git_commit')})")
+    services = build_services(args.db, stations=args.stations, scenario=scenario,
                               use_openai=args.openai and not args.mock,
                               run_budget_usd=args.budget, step_delay_s=0.6,
-                              start_simlab=not args.no_simlab, simlab_seed=args.seed,
-                              simlab_args=(["--target-bundle", args.target_bundle]
-                                           if args.target_bundle else None))
+                              start_simlab=not args.no_simlab, simlab_seed=seed,
+                              simlab_args=simlab_args)
+    if not args.no_savepoints:
+        from qumus2.stations.savepoint import SavePointWriter, savable
+
+        if savable(services) is None:
+            SavePointWriter(services, Path(args.db).resolve().parent / "savepoints", extra={
+                "seed": args.seed if resumed is None else resumed.get("seed"),
+                "target_bundle": args.target_bundle if resumed is None else resumed.get("target_bundle"),
+                "scenario": args.scenario})
+    if resumed is not None:
+        from qumus2.stations.savepoint import RESUME_MESSAGE
+
+        services.store.add_instruction(RESUME_MESSAGE, project_id=services.project_id)
     # bench state + real times next to the run store, for `qumus2 export` / replays
     recorder = attach_recorder(services)
     labs = ", ".join(f"{m} {s.url} ({s.kind})" for m, s in services.stations.modules.items())
@@ -101,6 +134,12 @@ def main(argv: list[str] | None = None) -> None:
                     help="OpenAI Agents SDK through QUMUS_OPENAI_* (spends API credit)")
     sp.add_argument("--budget", type=float, default=None, help="estimated USD cap for this run")
     sp.add_argument("--mock", action="store_true", help="scripted agents (the default)")
+    sp.add_argument("--resume", default=None, metavar="SAVEPOINT",
+                    help="start from a save point (a savepoints/spNN folder, or a run folder: its newest); "
+                    "needs a fresh --db and starts qumus-simlab from the save point")
+    sp.add_argument("--no-savepoints", action="store_true",
+                    help="do not write save points (default: one before flake selection, simulated "
+                    "stations on this computer only)")
     sp.add_argument("--no-browser", action="store_true", help="do not open a browser tab")
     sp.set_defaults(fn=_serve)
     tp = sub.add_parser("stations", help="show the configured stations and whether they answer")

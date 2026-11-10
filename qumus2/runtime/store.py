@@ -266,7 +266,10 @@ class RunStore:
                 self.set_meta("sessions", json.dumps(sorted([*ids, int(after_id)])))
 
     def close(self) -> None:
-        self._conn.close()
+        # under the lock: a background reader (record mirror, recorder) then gets
+        # "closed database" instead of racing the close inside SQLite
+        with self._lock:
+            self._conn.close()
 
     def _x(self, sql: str, args: Iterable[Any] = ()) -> _Rows:
         with self._lock:

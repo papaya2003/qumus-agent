@@ -165,6 +165,7 @@ class ContractJobService:
 
     def cancel(self, run_id: str) -> None:
         self._command(self.module_of_run(run_id), "job_cancel", {"run_id": run_id}, lease=False)
+        self.sync()
 
     def stop_all(self) -> None:
         errors = []
@@ -179,18 +180,23 @@ class ContractJobService:
     def retry(self, run_id: str) -> None:
         self.push()
         self._command(self.module_of_run(run_id), "job_retry", {"run_id": run_id}, lease=True)
+        self.sync()  # the run's new status, before anyone waits on the old terminal one
 
     def reverify(self, run_id: str) -> None:
         self._command(self.module_of_run(run_id), "job_reverify", {"run_id": run_id}, lease=True)
+        self.sync()
 
     def resume(self, run_id: str) -> dict[str, Any]:
         data = self._command(self.module_of_run(run_id), "job_resume", {"run_id": run_id},
                              lease=True)
+        self.sync()
         return data.get("result") or {}
 
     def resume_all(self) -> list[dict[str, Any]]:
         self.push()
-        return self._command(LAB_WIDE_MODULE, "job_resume_all", {}, lease=True).get("result") or []
+        result = self._command(LAB_WIDE_MODULE, "job_resume_all", {}, lease=True).get("result") or []
+        self.sync()
+        return result
 
     def review_waiting(self, run_id: str, *, project_id: str, failure_event_id: int,
                        reviewer: str, reason: str) -> dict[str, Any]:

@@ -167,6 +167,8 @@ class RecordMirror:
                 if not isinstance(page, dict):
                     self._fail("records feed: reply is not an object")
                     return total
+                if self._stop.is_set() and threading.current_thread() is self._thread:
+                    return total  # closing: leave the store alone
                 lab_id = page.get("lab_id")
                 if lab_id is not None and str(lab_id) != (self.store.get_meta(LAB_ID_META) or str(lab_id)):
                     # a different laboratory store (e.g. a fresh simulated lab): start over;
@@ -364,6 +366,9 @@ class RecordMirror:
             time.sleep(0.05)
 
     def close(self) -> None:
+        """Stop the background thread; returns once no sync touches the store any more."""
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=self.client.timeout_s + 2.0)
+        with self._sync_lock:  # a sync from another thread finishes first
+            pass

@@ -60,7 +60,7 @@ records_from: stacking
 modules:
   exfoliation: {url: "http://127.0.0.1:8781/", kind: sim}
   stacking:    {url: "http://127.0.0.1:8782/", kind: sim}
-  reactor:     {url: "http://127.0.0.1:8783/", kind: sim}
+  reactor:     {url: "http://127.0.0.1:8783/lab/", kind: sim, adapter: console, session: qumus}
 ```
 
 Same computer or another computer: only `url` changes (`http://192.168.x.y:8782/`

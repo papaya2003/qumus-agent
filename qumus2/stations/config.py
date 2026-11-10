@@ -7,16 +7,13 @@
     modules:
       exfoliation: {url: "http://127.0.0.1:8781/", kind: sim}
       stacking:    {url: "http://127.0.0.1:8782/", kind: sim}
-      reactor:     {url: "http://127.0.0.1:8783/", kind: sim}
+      reactor:     {url: "http://127.0.0.1:8783/lab/", kind: sim, adapter: console, session: qumus}
 
 `kind` is `sim` (qumus-simlab window) or `real` (a laboratory computer, usually
 through an SSH tunnel). Extra keys of a module entry are kept with it.
 `adapter: console` marks a station that speaks the vdW reactor's own Lab Console
-API instead of contract v1 (qumus2/reactor/console.py; Jialei 2026-11-10), e.g.
-
-      reactor: {url: "http://127.0.0.1:8783/lab/", kind: sim, adapter: console, session: qumus}
-
-Such a station has no record feed and no contract jobs: the brain's reactor tools
+API instead of contract v1 (qumus2/reactor/console.py; Jialei 2026-11-10), as the
+packaged default reactor does. Such a station has no record feed and no contract jobs: the brain's reactor tools
 (qumus2/reactor/tools.py) drive it. Relative `simlab_dir` is relative to the
 stations.yaml file.
 

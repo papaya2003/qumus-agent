@@ -88,9 +88,9 @@ class ConversationDriver:
             item = {"run_id": d["run_id"], "flow": run.get("flow"), "reason": d["reason"]}
             if d["action"] == "resume":
                 resumed.append({**item, "from_step": d["start_seq"] + 1,
-                                "step": _step_name(run, d["start_seq"])})
+                                "step": _step_name(self.store, run, d["start_seq"])})
             else:
-                waiting.append({**item, "step": _step_name(run, d["start_seq"])})
+                waiting.append({**item, "step": _step_name(self.store, run, d["start_seq"])})
         self._note_due = False
         self.store.mark_instruction(ins["id"], "handled", f"{len(resumed)} job(s) resumed")
         self.store.emit("system.continued", {"instruction_id": ins["id"], "resumed": resumed,
@@ -143,15 +143,14 @@ class ConversationDriver:
         raise TimeoutError("driver did not become idle")
 
 
-def _step_name(run: dict[str, Any], seq: int) -> str | None:
-    from qumus2.flows.flow import get_flow
-
-    try:
-        flow = get_flow(run["flow"])
-        steps = flow.build_steps(flow.Params.model_validate(run["params"]))
-    except Exception:  # noqa: BLE001 - a name for a message only
+def _step_name(store: Any, run: dict[str, Any], seq: int) -> str | None:
+    """Name of a step from the mirrored lab step rows (the brain never builds flows)."""
+    if not run:
         return None
-    return steps[seq].name if 0 <= seq < len(steps) else None
+    for step in store.get_steps(run["id"]):
+        if step["seq"] == seq:
+            return step["name"]
+    return None
 
 
 def _continue_text(resumed: list[dict[str, Any]], waiting: list[dict[str, Any]]) -> str:

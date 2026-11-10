@@ -31,15 +31,6 @@ ui-test = ["playwright>=1.48"]
 design = ["klayout>=0.29"]
 # Maintained material-only RGB adapter; no frozen specialist or model SDK.
 vision = ["opencv-python-headless>=4.8", "scipy>=1.11", "scikit-image>=0.22"]
-# Running the unchanged v1 copy on the testbench (v1compare/): v1's own imports.
-v1compare = ["smolagents>=1.20", "sqlalchemy>=2.0", "opencv-python-headless>=4.8",
-             "numpy>=1.26", "scipy>=1.11", "scikit-image>=0.22", "matplotlib>=3.8",
-             "watchdog>=4", "tqdm>=4.66", "pillow>=10.1", "python-dotenv>=1.0", "requests>=2.31",
-             "tenacity>=8"]
-# LiteLLM currently requires openai<3; Agents SDK 0.24 requires openai>=3.
-# Install the paid v1-agent comparison in its own environment, without agents.
-# Frozen v1 specialists retain their original SDK; never install this extra in .venv.
-v1agents = ["litellm>=1.70", "claude-agent-sdk==0.2.168"]
 
 [project.scripts]
 qumus2 = "qumus2.cli:main"
@@ -49,7 +40,7 @@ include = ["qumus2*"]
 
 [tool.setuptools.package-data]
 "qumus2" = ["config/*.yaml", "agents/prompts/*.md",
-            "agents/skills/skills/**/*", "testbench/scenarios/*.yaml", "ui/static/*"]
+            "agents/skills/skills/**/*", "agents/scenarios/*.yaml", "ui/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

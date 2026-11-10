@@ -49,6 +49,11 @@ class FakeCommand:
     message: str = ""
     #: optional hook(params, service) -> dict of top-level/device field updates
     effect: Any = None
+    #: optional hook(params, service) -> result data, run when the command is accepted
+    #: (a whole-job action answers {"run_id": ...}); an exception refuses it with 400
+    run: Any = None
+    #: extra describe() fields (e.g. {"job": True})
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 _TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool,
@@ -125,6 +130,9 @@ class FakeService:
         self.heartbeat_acquires = heartbeat_acquires
         #: extra read-only GET routes (path below base_path -> JSON payload)
         self.extra_get = dict(extra_get or {})
+        #: dynamic routes: hook(method, path, query, body) -> (status, payload) | None;
+        #: bytes payloads are sent as application/octet-stream (pictures)
+        self.route_hook: Any = None
         self.lock = threading.RLock()
         self.seq = 0
         self.busy = False
@@ -228,7 +236,7 @@ class FakeService:
             name: {"params": c.params, "any_client": c.any_client,
                    **({"motion": c.motion} if c.motion is not None else {}),
                    **({"local_only": True} if c.local_only else {}),
-                   **({"ui_only": True} if c.ui_only else {})}
+                   **({"ui_only": True} if c.ui_only else {}), **c.extra}
             for name, c in self.commands.items()
         }
         body: dict[str, Any] = {
@@ -275,10 +283,11 @@ class FakeService:
     def start_command(self, client: str, action: str, params: dict[str, Any]) -> str:
         cmd = self.commands[action]
         ident = uuid.uuid4().hex
+        data = cmd.run(params, self) if cmd.run is not None else None
         with self.lock:
             self.busy = True
             record = {"id": ident, "action": action, "client": client, "result": None,
-                      "message": "", "finished_at": None}
+                      "message": "", "finished_at": None, **({"data": data} if data is not None else {})}
             self.last_command = dict(record)
             self._current = {"record": record, "motion": bool(cmd.motion)}
             self.event("info", "command accepted", id=ident, action=action, client=client)
@@ -298,9 +307,10 @@ class FakeService:
                 pass
 
             def _send(self, status: int, body: Any) -> None:
-                data = json.dumps(body).encode()
+                raw = isinstance(body, (bytes, bytearray))
+                data = bytes(body) if raw else json.dumps(body, default=str).encode()
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", "application/octet-stream" if raw else "application/json")
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
@@ -335,6 +345,10 @@ class FakeService:
                         return self._send(200, {"events": items, "next": service.seq})
                 if path in service.extra_get:
                     return self._send(200, service.extra_get[path])
+                if service.route_hook is not None:
+                    answer = service.route_hook("GET", path, query, None)
+                    if answer is not None:
+                        return self._send(*answer)
                 return self._send(404, {"error": "not found"})
 
             def do_POST(self) -> None:  # noqa: N802
@@ -398,6 +412,10 @@ class FakeService:
                     return self._send(200, {"stop": word, "state": s.snapshot()})
                 if path == "/api/command":
                     return self._command(client, body)
+                if s.route_hook is not None:
+                    answer = s.route_hook("POST", path, {}, body)
+                    if answer is not None:
+                        return self._send(*answer)
                 return self._send(404, {"error": "not found"})
 
             def _command(self, client: str, body: dict[str, Any]) -> None:
@@ -424,9 +442,12 @@ class FakeService:
                     return self._send(409, {"error": "The service is locked. Only stop is allowed."})
                 if not cmd.any_client and s.holder != client:
                     return self._send(409, {"error": "Acquire the control lease before sending a command."})
-                if s.busy:
+                if s.busy and not cmd.any_client:
                     return self._send(409, {"error": "busy"})
-                ident = s.start_command(client, action, params)
+                try:
+                    ident = s.start_command(client, action, params)
+                except (ValueError, KeyError) as exc:
+                    return self._send(bad, {"error": str(exc)})
                 if s._drop_next:
                     s._drop_next = False
                     s.locked = True

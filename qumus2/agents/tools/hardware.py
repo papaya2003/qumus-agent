@@ -273,8 +273,6 @@ def job_result(st: JobStatus, recovered: list[str] | None = None, *, store: Any 
         data["steps"] = compact_steps(st.steps)
         data["result"] = compact_result(st.result)
         if st.workflow is not None:
-            from qumus2.flows.workflow import compact_manifest
-
             data["workflow"] = compact_manifest(st.workflow)
     if store is not None and (run := store.get_run(st.run_id)) is not None:
         data["outcome"] = ledger_outcome(store, run)
@@ -559,3 +557,9 @@ async def request_human_help(args: HelpArgs, ctx: ToolContext) -> ToolResult:
     ctx.store.emit("notification", {"level": "needs_human", "text": args.reason},
                    run_id=args.job_id, agent=ctx.agent)
     return ToolResult(status="ok", summary="human notified")
+
+
+def compact_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Keep molecular identities/ranges in routine tool replies; full=true retains leaves."""
+    return {key: [compact_manifest(child) for child in value] if key == "children" else value
+            for key, value in manifest.items() if key not in ("checkpoints", "description")}

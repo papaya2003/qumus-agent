@@ -11,15 +11,14 @@ from qumus2.agents.tooling import ToolContext, ToolResult, qumus_tool
 from qumus2.agents.tools.hardware import submit
 from qumus2.agents.tools.picking import Assessment, optical_selection_errors
 from qumus2.agents.tools.project import NoArgs
-from qumus2.agents.tools.recovery import RecoverArgs, retry_job, reverify_job
-from qumus2.flows.library.reactor import (
+from qumus2.agents.tools.reactor_params import (
     ChipParams,
     GrowthParams,
     ObserveParams,
     PositionParams,
     ShutdownParams,
 )
-from qumus2.flows.library.reactor_preparation import PrepareReactorPairParams
+from qumus2.agents.tools.recovery import RecoverArgs, retry_job, reverify_job
 from qumus2.records.reactor_pairs import (
     _record_pair_product,
     prepared_pair,
@@ -156,8 +155,7 @@ async def prepare_reactor_pair(args: PrepareReactorPairArgs, ctx: ToolContext) -
         errors.append("Use prepare_material_metal for this established material-metal simulation and its known stamp film. "
                       "prepare_reactor_pair is only the legacy two-reactant fixture; it is not an alternative preparation route.")
         return ToolResult(status="needs_attention", summary="; ".join(errors), data={"preparation_errors": errors})
-    params = PrepareReactorPairParams(target_chip_id=args.chip_id, flake_ids=args.flake_ids)
-    return submit(ctx, "prepare_reactor_pair", params.model_dump())
+    return submit(ctx, "prepare_reactor_pair", {"target_chip_id": args.chip_id, "flake_ids": list(args.flake_ids)})
 
 
 @qumus_tool("hold_reactor_observation", "Verify a loaded carrier and record measured process "
@@ -673,20 +671,14 @@ class RecoverMaterialMetalArgs(RecoverArgs):
             "release cannot be replayed automatically. Use the original job ID and evidence-based reason.",
             agents={"hands", "reactor"}, kind="recovery", requires=("recovery_budget",))
 async def recover_material_metal_job(args: RecoverMaterialMetalArgs, ctx: ToolContext) -> ToolResult:
-    from qumus2.flows.flow import get_flow
-    from qumus2.runtime.jobs import first_unfinished
-
     run = ctx.store.get_run(args.job_id)
     expected = "prepare_material_metal" if ctx.agent == "hands" else "reactor_material_metal"
     if not run or run["flow"] != expected or run["project_id"] != ctx.project_id:
         return ToolResult(status="error", summary="Recover only this role's original material-metal job in this project.")
-    flow = get_flow(run["flow"])
-    flow._bench = ctx.extra.get("bench")
-    steps = flow.build_steps(flow.Params.model_validate(run["params"]))
-    seq = first_unfinished(ctx.store, args.job_id)
-    step = steps[seq] if seq < len(steps) else None
-    if step and (step.name in ("set_reactor_conditions", "observe_material_metal_progress") or
-                 args.action == "retry" and not step.safe_to_resume):
+    # The lab's step rows (mirrored) name the interrupted step and whether it may be repeated.
+    step = next((s for s in ctx.store.get_steps(args.job_id) if s["status"] not in ("done", "skipped")), None)
+    if step and (step["name"] in ("set_reactor_conditions", "observe_material_metal_progress") or
+                 args.action == "retry" and not step.get("safe_to_resume")):
         return ToolResult(status="error", summary="Interrupted exposure or uncertain release requires review; it cannot be replayed as ordinary recovery.")
     recover = RecoverArgs(job_id=args.job_id, reason=args.reason)
     return await (reverify_job(recover, ctx) if args.action == "reverify" else retry_job(recover, ctx))

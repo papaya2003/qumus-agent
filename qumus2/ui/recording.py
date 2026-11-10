@@ -142,13 +142,13 @@ class Recorder:
 
 def attach_recorder(services: Any, **kw: Any) -> Recorder | None:
     """Start a recorder for a file-backed run store; None for ":memory:"."""
-    from qumus2.ui.app import bench_layout, bench_state
+    from qumus2.ui.app import bench_state
 
     if services.store.path == ":memory:":
         return None
     try:
-        layout = bench_layout(services.lab.bench)
-    except Exception:  # noqa: BLE001 - lab process not up yet: export falls back to config
+        layout = services.lab.layout() or None
+    except Exception:  # noqa: BLE001 - station not up yet: export falls back to the stored bench
         layout = None
     return Recorder(services.store, lambda: bench_state(services),
                     timeline_path(services.store.path), layout=layout, **kw).start()
@@ -237,10 +237,7 @@ def build_recording(store: Any, timeline: list[dict[str, Any]], *, after_id: int
     if layout is None:
         layout = next((t["layout"] for t in reversed(timeline) if "layout" in t), None)
     if layout is None:
-        from qumus2.config import load_yaml
-        from qumus2.ui.app import bench_layout
-
-        layout = bench_layout(load_yaml("bench.yaml"))
+        layout = {}  # no station layout was recorded with this run
     top = before_id if before_id is not None else float("inf")
     tl = [t for t in timeline if t.get("id", 0) >= after_id and not t.get("start")]
     frames = [{"id": t["id"], "bench": t["bench"]} for t in tl if "bench" in t and t["id"] <= top]

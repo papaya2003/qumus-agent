@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from qumus2.flows.bench import stamp_slots
+from qumus2.core.bench import stamp_slots
 from qumus2.records.lab_geometry import record_report
 from qumus2.runtime.store import RunStore
 

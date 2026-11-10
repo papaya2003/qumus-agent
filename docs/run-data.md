@@ -14,7 +14,6 @@ runs/
                          original two-arm files remain directly under workspace/
   checks/
     manual/              direct CLI serve/lab/export defaults
-    model/               check_model.py live model checks
     stream/              probe_model_stream.py transport checks
     acceptance/          historical acceptance source runs (recorder retired)
     demos/               record_demo.py source runs

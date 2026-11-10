@@ -1,0 +1,9 @@
+# Default stations: the simulated laboratory (qumus-simlab) on this computer.
+# Copy to ./stations.yaml (or pass --stations / QUMUS_STATIONS) to change a module,
+# e.g. point stacking at the lab PC through an SSH tunnel with kind: real.
+simlab_dir: ../qumus-simlab        # relative to the qumus-agent checkout for this default
+records_from: stacking
+modules:
+  exfoliation: {url: "http://127.0.0.1:8781/", kind: sim}
+  stacking:    {url: "http://127.0.0.1:8782/", kind: sim}
+  reactor:     {url: "http://127.0.0.1:8783/", kind: sim}

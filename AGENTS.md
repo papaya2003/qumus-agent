@@ -3,7 +3,7 @@
 - Private lab code. Do not publish source or lab data to public locations.
 - All project code, comments, commit messages, UI text, documentation,
   launcher messages and new filenames are in English.
-- Read `docs/architecture.md` (repositories and the lab contract), `docs/sim-contracts.md` (agent and simulation contracts) and `docs/workstreams.md` before changing code.
+- Read `docs/architecture.md` (brain, stations, record feed, stations.yaml) before changing code. This repository is the brain only: never add laboratory code (flows, devices, safety, simulation) here; that belongs to qumus-simlab or qumus-lab.
   Update the architecture document when changing a contract.
 - Use `.venv/bin/python` for the current OpenAI Agents SDK runtime. See
   `docs/runtime.md` for setup, transport, budgets and validation.

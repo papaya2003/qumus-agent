@@ -259,16 +259,15 @@ async def query_run_records(args: RecordsArgs, ctx: ToolContext) -> ToolResult:
 async def get_lab_setup(args: NoArgs, ctx: ToolContext) -> ToolResult:
     from qumus2.agents.tools.hardware import ExfoliateArgs
     from qumus2.agents.tools.reactor import reactor_setup_details
-    from qumus2.flows.flow import FLOWS, get_flow
     from qumus2.records.outcomes import recipe_keys
     from qumus2.records.plan_completion import FLOW_SAMPLE_STATUSES, flow_storage_contracts
 
     reactor = await reactor_setup_details(ctx)
     bench = ctx.extra.get("bench") or {}
-    get_flow("place_chip_on_transfer_stage")  # imports the flow library
-    return ToolResult(status="ok", summary=f"{len(FLOWS)} registered workflows; "
+    flows = ctx.jobs.flow_names()  # what the connected stations offer (contract describe)
+    return ToolResult(status="ok", summary=f"{len(flows)} registered workflows; "
                       "support does not establish current readiness",
-                      data={"flows": sorted(FLOWS), "bench": ctx.store.bench,
+                      data={"flows": flows, "bench": ctx.store.bench,
                             "instruments": {**{name: bench[name] for name in
                                 ("microscope", "transfer_stage", "exfoliator", "arm_left", "arm_right", "manipulator") if name in bench},
                                 "reactor": reactor.data},

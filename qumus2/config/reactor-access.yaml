@@ -1,0 +1,7 @@
+# Cold-access envelope of the (simulated) reactor station, read by the brain's
+# plan-completion check before it accepts "cold_storage" as reached. Copied from
+# the station's limits.yaml (qumus-simlab config/limits.yaml reactor_interlocks).
+reactor_interlocks:
+  - stage: reactor_slot
+    access_max_celsius: 80
+    access_max_flow_sccm: 0.5

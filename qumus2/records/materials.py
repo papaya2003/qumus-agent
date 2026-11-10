@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from qumus2.core.bench import slot_station
 from qumus2.core.materials import normalize_material_code
-from qumus2.flows.bench import slot_station
 from qumus2.records.lab_geometry import record_report
 from qumus2.runtime.store import RunStore
 

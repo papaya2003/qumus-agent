@@ -16,7 +16,9 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from qumus2.core.types import Pose
-from qumus2.devices.base import Frame
+
+#: a captured image with metadata; the frames themselves belong to the stations
+Frame = Any
 
 
 class Detection(BaseModel):

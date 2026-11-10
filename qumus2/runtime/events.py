@@ -147,6 +147,10 @@ EVENT_KINDS: dict[str, str] = {
                     "source kind is not sensing authority or motion permission)",
     "safety.violation": "device, command, params, reason",
     "notification": "level (info/warn/needs_human/danger), text",
+    # stations (qumus2/stations): which laboratory this brain talks to
+    "stations.connected": "records_from, simlab_dir, path, modules{module: {url, kind, ...}}",
+    # Events re-emitted from a station's record feed keep their own kind and add
+    # lab_event_id (and lab_ts) to the payload (stations/mirror.py).
     # experience book (spec 10; records/experience.py)
     "experience.proposed": "experience_id, topic, claim, sandbox",
     "experience.voted": "experience_id, run_id, verdict, note  (agent = advisor or code)",

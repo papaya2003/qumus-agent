@@ -17,9 +17,13 @@ from typing import Protocol
 class ReportedAgentError(RuntimeError):
     """A terminal failure already saved by the runtime; the driver must not duplicate it."""
 
-    def __init__(self, message: str, event_id: int) -> None:
+    def __init__(self, message: str, event_id: int, *, outage: dict | None = None) -> None:
         super().__init__(message)
         self.event_id = event_id
+        #: set when the model service was unavailable (HTTP 429/5xx or no
+        #: connection): {"status": int | None, "retry_after_s": float | None}.
+        #: The driver then waits and continues the turn (agents/driver.py).
+        self.outage = outage
 
 
 class AgentRuntime(Protocol):

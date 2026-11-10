@@ -13,6 +13,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -332,6 +333,63 @@ def http_timeout_s() -> float:
 
 #: HTTP replies that mean the provider did not process the request.
 REFUSED_UNPROCESSED = frozenset({429, 503})
+#: HTTP replies after which the model service is worth asking again later
+#: (overloaded, rate limited, gateway/upstream failure).
+OUTAGE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def http_max_retries_from_env(default: int) -> int:
+    """QUMUS_OPENAI_HTTP_RETRIES overrides the per-request HTTP retry count."""
+    raw = os.environ.get("QUMUS_OPENAI_HTTP_RETRIES", "").strip()
+    if not raw:
+        return default
+    value = int(raw)
+    if value < 0:
+        raise ValueError("QUMUS_OPENAI_HTTP_RETRIES must be a nonnegative integer")
+    return value
+
+
+_RETRY_AFTER_TEXT = re.compile(r'retry-after(-ms)?\\?"?\s*[:=]\s*\\?"?(\d+(?:\.\d+)?)', re.I)
+
+
+def _retry_after_s(exc: BaseException) -> float | None:
+    """Seconds the provider asked us to wait: headers first, then the error text
+    (the gateway forwards the upstream headers inside its JSON message)."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None) or {}
+    try:
+        if headers.get("retry-after-ms"):
+            return float(headers["retry-after-ms"]) / 1000.0
+        if headers.get("retry-after"):
+            return float(headers["retry-after"])
+    except (TypeError, ValueError):
+        pass
+    found = [(m.group(1), float(m.group(2))) for m in _RETRY_AFTER_TEXT.finditer(str(exc))]
+    for ms, value in found:
+        if not ms:
+            return value
+    return found[0][1] / 1000.0 if found else None
+
+
+def model_outage(exc: BaseException) -> dict[str, Any] | None:
+    """{"status", "retry_after_s"} when `exc` (or what it wraps) means the model
+    service was unavailable rather than our request being wrong; else None."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover - the SDK runtime needs openai anyway
+        return None
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, openai.APIStatusError):
+            if current.status_code in OUTAGE_STATUS:
+                return {"status": current.status_code, "retry_after_s": _retry_after_s(current)}
+            return None
+        if isinstance(current, openai.APIConnectionError):  # includes APITimeoutError
+            return {"status": None, "retry_after_s": None}
+        current = current.__cause__ or current.__context__
+    return None
 
 class OpenAIRuntime:
     # Keep the existing UI/event contract; provider identifies which SDK backs it.
@@ -344,7 +402,7 @@ class OpenAIRuntime:
         if type(http_max_retries) is not int or http_max_retries < 0:
             raise ValueError("http_max_retries must be a nonnegative integer")
         self._pre_send_admission = pre_send_admission
-        self._http_max_retries = http_max_retries
+        self._http_max_retries = http_max_retries_from_env(http_max_retries)
         self.gateway, self.store, self.creds = gateway, gateway.store, creds
         state = (self._project() or {}).get('state', {})
         self._context_defaults = context_defaults(creds)
@@ -969,10 +1027,12 @@ class OpenAIRuntime:
                 from qumus2.agents.runtime import ReportedAgentError
 
                 message = scrub_text(str(exc), [self.creds.api_key])
+                outage = model_outage(exc)
                 event_id = self.store.emit("agent.error", {"provider": "openai", "type": type(exc).__name__,
                                 "session_id": self.session_id, "project_id": self.gateway.project_id,
-                                "error": message}, agent=ORCHESTRATOR)
-                raise ReportedAgentError(message, event_id) from None
+                                "error": message, **({"outage": outage} if outage else {})},
+                                agent=ORCHESTRATOR)
+                raise ReportedAgentError(message, event_id, outage=outage) from None
         finally:
             self._composition_tasks.pop(ORCHESTRATOR, None)
             self.gateway.turn_finished(ok=ok)

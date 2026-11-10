@@ -168,11 +168,22 @@ def test_budget_stops_before_next_model_call(services):
     rt, model = runtime(services, [ModelStep(output=[fc("list_samples", {}, "c1")],
                         usage=Usage(input_tokens=1000, total_tokens=1000)), said("must not run")],
                         run_budget_usd=0.0001)
+    rt._request_allowance = lambda *a: 0.0  # the spent check alone (reserve: next test)
     asyncio.run(rt.send("List inventory"))
     assert len(model.calls) == 1
     assert events(services, "agent.turn_end")[-1].payload["reason"] == "budget_exhausted"
     asyncio.run(rt.send("Again"))
     assert len(model.calls) == 1 and rt.budget_exhausted
+
+
+def test_run_budget_holds_back_the_next_request(services):
+    # $0.60 left but this request may cost $1: it is not sent (no overshoot)
+    rt, model = runtime(services, [said("must not run")], run_budget_usd=0.6)
+    rt._request_allowance = lambda *a: 1.0
+    asyncio.run(rt.send("Pick flakes"))
+    assert len(model.calls) == 0
+    end = events(services, "agent.turn_end")[-1].payload
+    assert end["reason"] == "budget_exhausted"
 
 
 def test_unknown_gateway_prices_refuse_paid_calls(services):
@@ -553,3 +564,25 @@ def test_modern_hardware_delegation_rejects_missing_or_invented_operation(servic
     assert denial['rule'] == 'physical_operation_required'
     assert 'place_chip_on_transfer_stage' in denial['reason']
     asyncio.run(rt.close())
+
+
+def test_fresh_tool_images_are_all_shown(services):
+    """A tool result with more images than the bound is shown whole; only older ones go."""
+    from types import SimpleNamespace
+
+    from agents.run_config import ModelInputData
+
+    from qumus2.agents.openai_runtime import unique_image_input
+
+    def img(n):
+        return {"type": "input_image", "image_url": f"data:image/png;base64,{n:04d}"}
+
+    items = [{"type": "function_call", "call_id": "a", "name": "get_sample_images", "arguments": "{}"},
+             {"type": "function_call_output", "call_id": "a", "output": [img(i) for i in range(3)]},
+             {"type": "function_call", "call_id": "b", "name": "get_sample_images", "arguments": "{}"},
+             {"type": "function_call_output", "call_id": "b", "output": [img(i) for i in range(10, 16)]}]
+    out = unique_image_input(SimpleNamespace(model_data=ModelInputData(items, None)))
+    shown = [p["image_url"] for p in out.input[3]["output"] if p.get("type") == "input_image"]
+    assert len(shown) == 6
+    old = [p for p in out.input[1]["output"] if p.get("type") == "input_image"]
+    assert old == []  # the bound (4) is already used by the fresh ones

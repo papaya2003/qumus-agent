@@ -113,8 +113,19 @@ def unique_image_input(data: Any, max_images: int = 4, *, diagnostic_observer: A
                   'get_project_context result below. The original is retained in the run record.]'}
                  if isinstance(item, dict) and item.get('type') == 'function_call_output'
                  and item.get('call_id') in old else item for item in items]
-    collect(items)
-    retained = set(list(dict.fromkeys(reversed(images)))[:max(1, max_images)])
+    # Images the latest tool results just returned are always shown: a picker that
+    # retrieves 6 views to compare must see all 6 (bounding them made it retrieve
+    # again and again). The bound applies to older images only.
+    tail = len(items)
+    while tail > 0 and isinstance(items[tail - 1], dict) \
+            and items[tail - 1].get('type') == 'function_call_output':
+        tail -= 1
+    collect(items[tail:])
+    fresh = set(images)
+    images.clear()
+    collect(items[:tail])
+    older = [i for i in dict.fromkeys(reversed(images)) if i not in fresh]
+    retained = fresh | set(older[:max(0, max_images - len(fresh))] if fresh else older[:max(1, max_images)])
     actions = {"superseded_snapshots": max(0, len(results) - 1),
                "omitted_images": 0, "duplicate_images": 0}
     if compacted_catalogues:
@@ -590,7 +601,9 @@ class OpenAIRuntime:
         cap = float(os.environ.get("QUMUS_MAX_BUDGET_USD") or self.cfg.get("max_budget_usd", 40))
         if cap <= 0 or self._turn_cost >= cap:
             raise self._budget_error("turn budget exhausted")
-        if self._turn_tokens >= int(self.cfg.get("openai", {}).get("max_total_tokens", 2_000_000)):
+        token_cap = int(os.environ.get("QUMUS_OPENAI_MAX_TOTAL_TOKENS")
+                        or self.cfg.get("openai", {}).get("max_total_tokens", 2_000_000))
+        if self._turn_tokens >= token_cap:
             raise self._budget_error("turn token budget exhausted")
         # A USD cap with unknown gateway prices would be a false guarantee.
         choice = self.agent_model(role)
@@ -673,8 +686,17 @@ class OpenAIRuntime:
         class Hooks(RunHooks):
             async def on_llm_start(self, context, agent, system_prompt, input_items):
                 rt._check_budget(agent.name)
-                if rt._ledger is not None:
+                if rt._ledger is not None or rt.run_budget_usd is not None:
                     allowance = rt._request_allowance(agent, system_prompt, input_items)
+                    # the run budget also holds back what this request may cost: a
+                    # check of what was spent alone let the last request overshoot
+                    if rt.run_budget_usd is not None \
+                            and rt.spent_usd() + allowance > rt.run_budget_usd:
+                        raise rt._budget_error(
+                            f"run budget cannot cover another model request (spent "
+                            f"${rt.spent_usd():.2f} of ${rt.run_budget_usd:.2f}, request "
+                            f"reserve ${allowance:.2f})")
+                if rt._ledger is not None:
                     cap = min(rt.creds.test_budget_usd, rt.run_budget_usd or rt.creds.test_budget_usd)
                     try:
                         rt._reservations[agent.name] = rt._ledger.reserve(rt._budget_scope, allowance, cap)

@@ -4,6 +4,7 @@
                      (starts qumus-simlab first when the stations are simulated and not running)
     qumus2 stations  print which station serves each module and whether it answers
     qumus2 export    turn a run store into a recording (History)
+    qumus2 replay    serve one recording (scripts/record_video.py turns it into a video)
 """
 
 from __future__ import annotations
@@ -110,6 +111,15 @@ def _export(args: argparse.Namespace) -> None:
     print(f"exported to {out}; watch it in Qumus under History")
 
 
+def _replay(args: argparse.Namespace) -> None:
+    import uvicorn
+
+    from qumus2.ui.replay import create_replay_app
+
+    print(f"replay of {args.recording} on http://{args.host}:{args.port}/ (Ctrl+C to stop)")
+    uvicorn.run(create_replay_app(args.recording), host=args.host, port=args.port, log_level="warning")
+
+
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     ap = argparse.ArgumentParser(prog="qumus2")
@@ -145,6 +155,11 @@ def main(argv: list[str] | None = None) -> None:
     tp = sub.add_parser("stations", help="show the configured stations and whether they answer")
     tp.add_argument("--stations", default=None)
     tp.set_defaults(fn=_stations)
+    rp = sub.add_parser("replay", help="serve one recording's replay page (for scripts/record_video.py)")
+    rp.add_argument("recording", help="recording folder (recording.json + media/)")
+    rp.add_argument("--host", default="127.0.0.1")
+    rp.add_argument("--port", type=int, default=8792)
+    rp.set_defaults(fn=_replay)
     ep = sub.add_parser("export", help="turn a run store into a recording (watch it in History)")
     ep.add_argument("--db", default="runs/sim-lab/manual/qumus.db")
     ep.add_argument("--out", required=True, help="output folder, e.g. recordings/my-run")

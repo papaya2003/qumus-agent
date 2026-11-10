@@ -1,7 +1,8 @@
 # Reactor over SSH (decided 2026-11-10)
 
-Jialei chose SSH tunnels for all brain <-> workstation traffic (2026-11-10). Olares is the hub until an
-always-on Qumus host exists (see the three-computer framework). This page covers the reactor side.
+Jialei chose SSH tunnels for all brain <-> workstation traffic (2026-11-10). The Olares host serves the vdW
+reactor ONLY (Jialei, 2026-11-10): it is not a hub for the lab PC modules (8781/8782), which need their own
+route to the brain. This page covers the reactor.
 
 ## 中文摘要
 
@@ -17,8 +18,6 @@ always-on Qumus host exists (see the three-computer framework). This page covers
 |---|---|---|---|
 | Brain (Mac) | `ssh -N -L 127.0.0.1:18772:127.0.0.1:8772 qumus@100.64.0.1` (Mac) | Mac `127.0.0.1:18772` | Olares Lab Console `127.0.0.1:8772` (base `/lab/`) |
 | Brain (Mac), optional | add `-L 127.0.0.1:11985:127.0.0.1:1985` | Mac `127.0.0.1:11985` | reactor camera streams |
-| Lab PC | `ssh -N -R 127.0.0.1:8781:127.0.0.1:8781 -R 127.0.0.1:8782:127.0.0.1:8782 qumus-lab@<olares>` (lab PC) | Olares `127.0.0.1:8781/8782` | qumus-lab modules on the lab PC |
-| Brain (Mac) | add `-L 127.0.0.1:8781:127.0.0.1:8781 -L 127.0.0.1:8782:127.0.0.1:8782` | Mac `127.0.0.1:8781/8782` | lab PC modules via Olares |
 
 `scripts/reactor_tunnel.sh` keeps the first tunnel open (redials with backoff, `ExitOnForwardFailure`,
 keepalive every 5 s). `qumus2.reactor.TUNNEL_CONSOLE_URL` is `http://127.0.0.1:18772/lab/`.
@@ -60,15 +59,13 @@ instead of six.
 >
 > 1. A login `qumus` on the Olares host, SSH key only (no password), no sudo. It only needs port forwarding;
 >    an interactive shell is not required.
-> 2. In its `~/.ssh/authorized_keys`, two keys we send you, restricted like this (OpenSSH 7.8+):
+> 2. In its `~/.ssh/authorized_keys`, the key we send you, restricted like this (OpenSSH 7.8+; Olares runs 9.6):
 >    ```
->    restrict,port-forwarding,permitopen="127.0.0.1:8772",permitopen="127.0.0.1:1985",permitopen="127.0.0.1:8781",permitopen="127.0.0.1:8782" ssh-ed25519 AAAA... qumus-brain-mac
->    restrict,port-forwarding,permitlisten="127.0.0.1:8781",permitlisten="127.0.0.1:8782" ssh-ed25519 AAAA... qumus-lab-pc
+>    restrict,port-forwarding,permitopen="127.0.0.1:8772",permitopen="127.0.0.1:1985" ssh-ed25519 AAAA... qumus-brain-mac
 >    ```
->    The first key lets the brain reach the Lab Console (8772), the camera streams (1985) and the two Qumus lab
->    modules that the lab PC publishes on Olares loopback (8781, 8782). The second key only lets the lab PC
->    publish those two ports. Nothing listens on a non-loopback address.
+>    This key can only reach the Lab Console (8772) and the camera streams (1985). It cannot open a shell or
+>    listen on any port of Olares.
 > 3. `AllowTcpForwarding yes` for this user in sshd (default on most systems).
 >
 > Which address should we use for SSH: the LarePass VPN address `100.64.0.1`, or is Olares reachable on the
-> campus network? Also, are ports 8781 and 8782 free on Olares?
+> campus network?

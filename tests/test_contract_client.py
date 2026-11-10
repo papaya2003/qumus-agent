@@ -343,3 +343,10 @@ def test_keeper_refusal_is_final_at_once(svc):
     keeper._renew = refused
     assert keeper.lost.wait(0.5) and keeper.missed == 0
     keeper.release_on_exit = False
+
+
+def test_describe_reads_sim_lab_lease_name():
+    from qumus2.contract.models import ServiceDescription
+
+    raw = {"service": "s", "contract": 1, "module": "stacking", "lease_s": 15, "commands": {}}
+    assert ServiceDescription.from_raw(raw).lease_seconds == 15.0

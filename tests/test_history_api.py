@@ -99,7 +99,7 @@ def test_history_wall_times_come_from_their_own_serve(tmp_path):
     path = timeline_path(db)
     # an older serve of a deleted store: same ids, other wall times
     old = [{"id": 0, "wall": 1000.0, "start": True}, {"id": 1, "wall": 1001.0}, {"id": 2, "wall": 1002.0}]
-    path.write_text("".join(json.dumps(t) + "\n" for t in old) + path.read_text())
+    path.write_text("".join(json.dumps(t) + "\n" for t in old) + path.read_text(encoding="utf-8"), encoding="utf-8")
     second = build_services(db, scenario="place_chip_demo", seed=2)
     with TestClient(create_app(second, start_driver=False)) as c:
         row = c.get("/api/history").json()[0]
@@ -147,7 +147,7 @@ def test_lab_time_skips_jumps_between_clocks():
 def test_review_after_recovered_job_keeps_the_failed_job_evidence():
     """An explicit human review is the current state, not a clean success."""
 
-    data = json.loads((v2_recording("openai-collaboration-20261025") / "recording.json").read_text())
+    data = json.loads((v2_recording("openai-collaboration-20261025") / "recording.json").read_text(encoding="utf-8"))
     summary = summarize_events(data["events"])
     assert summary["outcome"] == "awaiting review"
     assert summary["jobs"] == 7 and summary["flakes"] == 5

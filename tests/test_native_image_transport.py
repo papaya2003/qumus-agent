@@ -38,7 +38,7 @@ def test_unavailable_or_omitted_pixels_are_explicit(tmp_path):
     with large.open("wb") as stream:
         stream.truncate(8_000_001)
     unsupported = tmp_path / "document.txt"
-    unsupported.write_text("not an image")
+    unsupported.write_text("not an image", encoding="utf-8")
     small = tmp_path / "small.png"
     small.write_bytes(b"pixels")
     output = tool_output(ToolResult(status="ok", summary="Images", images=[

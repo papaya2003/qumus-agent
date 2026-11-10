@@ -41,7 +41,7 @@ def find_recordings(root: str | Path = DEFAULT_ROOT) -> list[Path]:
         if p.parent.name.endswith(".partial"):  # an export that never finished
             continue
         try:
-            rec = json.loads(p.read_text())
+            rec = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         if not isinstance(rec, dict) or rec.get("format") != FORMAT:
@@ -63,7 +63,7 @@ def resolve_recording(path: str | Path | None) -> Path:
         return p
     pick = DEFAULT_ROOT / "DEFAULT"  # one line: the recording History lists first
     if pick.is_file():
-        name = pick.read_text().strip()
+        name = pick.read_text(encoding="utf-8").strip()
         if name and (DEFAULT_ROOT / name / "recording.json").is_file():
             return DEFAULT_ROOT / name
     found = find_recordings()
@@ -84,7 +84,7 @@ def recording_row(folder: Path) -> dict[str, Any]:
     hit = _ROWS.get(str(f))
     if hit and hit[0] == mtime:
         return dict(hit[1])
-    rec = json.loads(f.read_text())
+    rec = json.loads(f.read_text(encoding="utf-8"))
     meta = rec.get("meta", {})
     row = {**summarize_events(rec.get("events") or []), "name": folder.name, **{
         k: meta.get(k) for k in ("title", "description", "agents", "provider", "model", "models", "recorded_at",
@@ -96,7 +96,7 @@ def recording_row(folder: Path) -> dict[str, Any]:
 
 def default_name(root: Path) -> str | None:
     pick = root / "DEFAULT"
-    return pick.read_text().strip() or None if pick.is_file() else None
+    return pick.read_text(encoding="utf-8").strip() or None if pick.is_file() else None
 
 
 def add_recording_routes(app: FastAPI, root: str | Path, current: Path | None = None) -> None:

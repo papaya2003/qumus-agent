@@ -14,6 +14,8 @@ devices or agents directly.
     GET  /api/events?after=<id>&limit=N   events newer than id (see runtime/events.py)
     GET  /api/runs/{run_id}               run + steps
     POST /api/messages {text, kind?}      kind: message (default) | plan_change | veto | stop | continue
+    POST /api/server/shutdown             stop the server like Control+C (header
+                                          X-Qumus-Shutdown-Token; scripts/start_qumus.py --stop)
     POST /api/stop                        Stop: interrupt agents, every job pauses at a safe point
     POST /api/continue                    Continue: paused jobs resume, agents go on
     POST /api/faults {fault, params}      testbench only: inject a fault (spec 11.2); 400 if unknown
@@ -52,12 +54,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -66,6 +69,8 @@ from qumus2.agents.roster import ALL_AGENTS, DESCRIPTIONS, UI_LABELS
 from qumus2.app import Services
 from qumus2.core.bench import positions, regions
 from qumus2.core.run_paths import resolve_run_path
+from qumus2.runtime.oscompat import interrupt_self
+from qumus2.ui.presence import SHUTDOWN_TOKEN_ENV, SHUTDOWN_TOKEN_HEADER
 
 STATIC = Path(__file__).parent / "static"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
@@ -449,7 +454,7 @@ def create_app(services: Services, *, start_driver: bool = True,
         if station and str(s.store.path) != ':memory:':
             try:
                 saved = BillingSnapshot.model_validate_json(
-                    Path(s.store.path).with_name('gateway-billing.json').read_text())
+                    Path(s.store.path).with_name('gateway-billing.json').read_text(encoding="utf-8"))
                 from qumus2.ui.billing import calibrated_estimate
 
                 snapshot = saved.model_dump(mode='json', exclude_none=True)
@@ -509,6 +514,20 @@ def create_app(services: Services, *, start_driver: bool = True,
     def message(m: MessageIn) -> dict[str, str]:
         iid = s.store.add_instruction(m.text, kind=m.kind, project_id=s.project_id)
         return {"instruction_id": iid}
+
+    @app.post("/api/server/shutdown")
+    async def shutdown(request: Request) -> dict[str, bool]:
+        """Stop this server the way Control+C does. For scripts/start_qumus.py
+        --stop: on Windows a signal sent from another process cannot be caught.
+        Only a caller that knows the token the launcher started us with (it is in
+        runs/qumus-server.lock) may do this; the custom header also keeps other
+        web sites out (a cross-site page cannot send it without CORS approval)."""
+        token = os.environ.get(SHUTDOWN_TOKEN_ENV, "")
+        given = request.headers.get(SHUTDOWN_TOKEN_HEADER, "")
+        if not token or not secrets.compare_digest(given, token):
+            raise HTTPException(403, "shutdown token missing or wrong")
+        asyncio.get_running_loop().call_later(0.2, interrupt_self)  # after this reply
+        return {"stopping": True}
 
     @app.post("/api/stop")
     def stop() -> dict[str, str]:

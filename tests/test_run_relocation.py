@@ -23,7 +23,7 @@ def relocated(tmp_path, monkeypatch):
     workspace.mkdir(parents=True)
     (runs / "layout.json").write_text(json.dumps({
         "version": 1, "original_root": str(runs),
-        "moves": {"desktop-openai": "workspace", "old-check": "checks/model"}}))
+        "moves": {"desktop-openai": "workspace", "old-check": "checks/model"}}), encoding="utf-8")
     monkeypatch.setattr(run_paths, "RUNS_ROOT", runs)
     return runs, workspace
 
@@ -73,9 +73,9 @@ def test_moved_scope_cannot_reset_budget(relocated):
 def test_manifest_rejects_escape_and_corruption(relocated):
     runs, workspace = relocated
     (runs / "layout.json").write_text(json.dumps({
-        "version": 1, "original_root": str(runs), "moves": {"old": "../elsewhere"}}))
+        "version": 1, "original_root": str(runs), "moves": {"old": "../elsewhere"}}), encoding="utf-8")
     with pytest.raises(ValueError, match="inside"):
         run_paths.resolve_run_path(workspace / "x.png")
-    (runs / "layout.json").write_text("{broken")
+    (runs / "layout.json").write_text("{broken", encoding="utf-8")
     with pytest.raises(ValueError):
         run_paths.original_run_path(workspace / "qumus.db")

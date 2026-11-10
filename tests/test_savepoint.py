@@ -30,7 +30,7 @@ class FakeClient:
 
         lab = Path(body["dir"])
         lab.mkdir(parents=True)
-        (lab / "checkpoint.json").write_text(json.dumps({"seed": 3}))
+        (lab / "checkpoint.json").write_text(json.dumps({"seed": 3}), encoding="utf-8")
         return {"dir": body["dir"], "seed": 3}
 
 
@@ -50,7 +50,7 @@ def _services(tmp_path, stations=None):
     store.emit("notification", {"level": "info", "text": "hello"})
     (work / "images" / "microscope").mkdir(parents=True)
     (work / "images" / "microscope" / "m1.jpg").write_bytes(b"jpg")
-    (work / "timeline.jsonl").write_text(json.dumps({"id": 1}) + "\n" + json.dumps({"id": 99}) + "\n")
+    (work / "timeline.jsonl").write_text(json.dumps({"id": 1}) + "\n" + json.dumps({"id": 99}) + "\n", encoding="utf-8")
     client = FakeClient()
     st = stations or stations_config.load(None)
     jobs = SimpleNamespace(clients={st.records_from: client}, mirror=None)
@@ -64,10 +64,10 @@ def test_save_and_restore_both_halves(tmp_path):
     sp = save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01", label="t", extra={"seed": 3})
     assert client.calls[0][:2] == ("POST", "api/sim/checkpoint")
     assert (sp / "brain" / "qumus.db").exists() and (sp / "lab" / "checkpoint.json").exists()
-    meta = json.loads((sp / "savepoint.json").read_text())
+    meta = json.loads((sp / "savepoint.json").read_text(encoding="utf-8"))
     assert meta["seed"] == 3 and meta["lab"]["seed"] == 3
     # timeline cut at the save point's last event
-    assert len((sp / "brain" / "timeline.jsonl").read_text().splitlines()) == 1
+    assert len((sp / "brain" / "timeline.jsonl").read_text(encoding="utf-8").splitlines()) == 1
     assert find_savepoint(tmp_path / "run1") == sp
 
     later = tmp_path / "run1" / "images" / "microscope" / "m2.jpg"
@@ -121,7 +121,7 @@ def test_restore_copies_imported_targets(tmp_path):
     s, _ = _services(tmp_path)
     t = tmp_path / "run1" / "targets" / "abc"
     t.mkdir(parents=True)
-    (t / "target.json").write_text("{}")
+    (t / "target.json").write_text("{}", encoding="utf-8")
     save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01")
     restore_savepoint(tmp_path / "run1", tmp_path / "run2" / "qumus.db")
     copied = tmp_path / "run2" / "targets" / "abc" / "target.json"
@@ -143,7 +143,7 @@ def test_restore_without_picture_list_uses_file_times(tmp_path):
     s, _ = _services(tmp_path)
     sp = save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01")
     (sp / "brain" / "images.json").unlink()
-    meta = json.loads((sp / "savepoint.json").read_text())
+    meta = json.loads((sp / "savepoint.json").read_text(encoding="utf-8"))
     later = tmp_path / "run1" / "images" / "microscope" / "m2.jpg"
     later.write_bytes(b"later")
     os.utime(later, (meta["saved_wall"] + 60, meta["saved_wall"] + 60))

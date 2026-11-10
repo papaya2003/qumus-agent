@@ -32,7 +32,7 @@ def test_context_config_is_model_and_endpoint_specific(monkeypatch, tmp_path):
         monkeypatch.delenv(name, raising=False)
     env = tmp_path / '.env'
     env.write_text('QUMUS_OPENAI_API_KEY=test\nQUMUS_OPENAI_MODEL=model-a\n'
-                   'QUMUS_OPENAI_CONTEXT_WINDOW_TOKENS=32768\n')
+                   'QUMUS_OPENAI_CONTEXT_WINDOW_TOKENS=32768\n', encoding="utf-8")
     creds = load_openai_credentials(env)
     assert creds.context_window_tokens == 32768
     state = {'openai_context_limits': {creds.base_url: {'model-b': 65536, 'unknown': None},

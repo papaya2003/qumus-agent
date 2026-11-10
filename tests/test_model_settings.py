@@ -126,11 +126,11 @@ def test_api_switch_validation_busy_and_billing_snapshot(tmp_path, monkeypatch):
     saved = {'source_url': 'https://physics.bytefuture.ai/dashboard/usage',
              'verified_at': '2026-10-25T20:00:00Z', 'total_usd': 4.25,
              'period': 'Past 30 days', 'scope': 'Account', 'by_model': []}
-    Path(s.store.path).with_name('gateway-billing.json').write_text(json.dumps(saved))
+    Path(s.store.path).with_name('gateway-billing.json').write_text(json.dumps(saved), encoding="utf-8")
     bill = c.get('/api/billing').json()
     assert bill['status'] == 'snapshot' and bill['snapshot'] == saved
     saved['by_model'] = [{'model': CREDS.model_id, 'usd': 4, 'requests': 10, 'tokens': 1_000_000}]
-    Path(s.store.path).with_name('gateway-billing.json').write_text(json.dumps(saved))
+    Path(s.store.path).with_name('gateway-billing.json').write_text(json.dumps(saved), encoding="utf-8")
     s.store.emit('agent.request_usage', {'provider': 'openai', 'model': CREDS.model_id,
                  'gateway': 'https://physics.bytefuture.ai/v1',
                  'request_id': 'calibrated', 'input_tokens': 900, 'output_tokens': 100,

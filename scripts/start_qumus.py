@@ -1,8 +1,9 @@
 """The single Qumus entry point: live work and History (recordings) in one app.
 
 From anywhere: .venv/bin/python scripts/start_qumus.py [--status | --stop | --restart]
-`Start Qumus.command` / `Stop Qumus.command` (in ~/Projects/Qumus and in v2)
-invoke this script.
+(Windows: .venv\\Scripts\\python.exe scripts\\start_qumus.py ...)
+`Start Qumus.command` / `Stop Qumus.command` (macOS, in ~/Projects/Qumus and in v2)
+and `Start Qumus.bat` / `Stop Qumus.bat` (Windows) invoke this script.
 
 It always opens the owner Hall-bar workspace and heals the states that used to
 block startup (Jialei 2026-11-04, "one stable entry"):
@@ -31,26 +32,47 @@ start only said "press Control+C in its original terminal". Now:
   (`qumus2 serve` on this workspace's database, this repository) and handled
   the same way. Other Qumus servers (other ports, scratch databases) are never
   touched.
+
+Windows (2026-11-06): the same behaviour with three differences, because a
+locked file handle cannot be handed to a child process there and a signal
+sent from another process cannot be caught:
+- the lock is a byte-range lock (msvcrt) and the server takes it itself: the
+  launcher starts `start_qumus.py --serve-holding-lock`, which locks, records
+  its pid and runs the server in the same process (LOCK_HANDOFF);
+- `--stop` asks the server over HTTP (POST /api/server/shutdown with the token
+  recorded in the lock file), which then stops itself as Control+C does. This
+  is tried first on every system; signals remain the fallback (on Windows the
+  fallback is `taskkill /T /F`, which also ends the lab process);
+- the server starts in its own process group without a console window, so
+  closing the Start Qumus.bat window does not stop it.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
-import fcntl
 import json
 import os
+import runpy
+import secrets
 import shutil
 import signal
 import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
+
+WINDOWS = os.name == 'nt'
+if WINDOWS:
+    import msvcrt
+else:
+    import fcntl
 
 REPO = Path(__file__).resolve().parents[1]
 WORKSPACE = 'runs/workspace/hallbar-linked-owner-20261101'
@@ -64,6 +86,15 @@ STARTUP_TIMEOUT_S = 180.0
 STOP_TIMEOUT_S = 30.0
 # Closing every Qumus page stops it after this long (Jialei 2026-11-06).
 STOP_WHEN_CLOSED_S = 15
+# Windows: the server takes the lock itself (see the module docstring).
+LOCK_HANDOFF = WINDOWS
+# Windows locks a byte far past the JSON record, so readers are not blocked.
+WINDOWS_LOCK_BYTE = 1 << 30
+LAUNCHER = 'Qumus.bat' if WINDOWS else 'Qumus.command'
+# The same names as in qumus2/ui/presence.py (repeated: --status and --stop
+# do not import the package).
+SHUTDOWN_TOKEN_ENV = 'QUMUS_SHUTDOWN_TOKEN'
+SHUTDOWN_TOKEN_HEADER = 'X-Qumus-Shutdown-Token'
 
 
 def _stamp() -> str:
@@ -133,24 +164,33 @@ def code_version() -> str | None:
     return result.stdout.strip() or None if result.returncode == 0 else None
 
 
-def try_lock(*, create: bool = True) -> int | None:
-    """An fd holding the exclusive workspace lock, or None while a server holds it."""
-    path = REPO / LOCK
+def lock_file(path: Path, *, create: bool = True) -> int | None:
+    """An fd holding the exclusive lock on `path`, or None while another process holds it.
+    The lock ends with the process that holds the fd, however it ends."""
     if not create and not path.exists():
         return None
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if WINDOWS:
+            os.lseek(fd, WINDOWS_LOCK_BYTE, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
         os.close(fd)
         return None
     return fd
 
 
-def read_state() -> dict:
+def try_lock(*, create: bool = True) -> int | None:
+    """An fd holding the exclusive workspace lock, or None while a server holds it."""
+    return lock_file(REPO / LOCK, create=create)
+
+
+def read_state(path: Path | None = None) -> dict:
     try:
-        state = json.loads((REPO / LOCK).read_text() or '{}')
+        state = json.loads((path or REPO / LOCK).read_text(encoding='utf-8') or '{}')
     except (OSError, ValueError):
         return {}
     return state if isinstance(state, dict) else {}
@@ -159,7 +199,11 @@ def read_state() -> dict:
 def write_state(fd: int, state: dict) -> None:
     data = json.dumps(state, indent=2).encode()
     os.ftruncate(fd, 0)
-    os.pwrite(fd, data, 0)
+    if hasattr(os, 'pwrite'):
+        os.pwrite(fd, data, 0)
+    else:  # Windows
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, data)
 
 
 def health(port: int, timeout: float = 3.0) -> dict | None:
@@ -175,7 +219,10 @@ def port_free(port: int) -> bool:
     with socket.socket() as sock:
         # A just-closed server may leave sockets in TIME_WAIT. Match the
         # application's reuse policy so a normal restart is not refused.
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # (On Windows SO_REUSEADDR would let the bind steal a port in use, and
+        # TIME_WAIT does not block a bind there.)
+        if not WINDOWS:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((HOST, port))
         except OSError:
@@ -184,6 +231,11 @@ def port_free(port: int) -> bool:
 
 
 def alive(pid: int) -> bool:
+    if WINDOWS:
+        # os.kill(pid, 0) would END the process there (TerminateProcess)
+        from qumus2.runtime.oscompat import pid_alive
+
+        return pid_alive(pid)
     with contextlib.suppress(ChildProcessError, OSError):
         if os.waitpid(pid, os.WNOHANG)[0] == pid:   # our own child that has exited
             return False
@@ -254,6 +306,7 @@ class Server:
     log: str | None = None
     registered: bool = True   # False: started before the lock file existed
     starting: bool = False
+    token: str | None = None  # for POST /api/server/shutdown
 
 
 def find_server(*, read_only: bool = False) -> Server | None:
@@ -266,7 +319,7 @@ def find_server(*, read_only: bool = False) -> Server | None:
         if isinstance(pid, int) and alive(pid):
             return Server(pid=pid, port=int(state.get('port') or PORT), version=state.get('version'),
                           started_at=state.get('started_at'), log=state.get('log'),
-                          starting=state.get('phase') == 'starting')
+                          starting=state.get('phase') == 'starting', token=state.get('token'))
         # The lock is held, but its record is not readable yet: a start is under way.
         return Server(pid=-1, port=int(state.get('port') or PORT), starting=True)
     if fd is not None:
@@ -295,10 +348,31 @@ def _wait_gone(pid: int, timeout: float) -> bool:
     return not alive(pid)
 
 
-def stop_pid(pid: int, timeout: float = STOP_TIMEOUT_S) -> bool:
-    """SIGINT (what Control+C sends: agents pause at a safe point, the lab
-    saves its state), then SIGTERM if it does not end in time."""
-    for sig, wait in ((signal.SIGINT, timeout), (signal.SIGTERM, 10.0)):
+def request_shutdown(port: int, token: str) -> bool:
+    """Ask the server to stop itself as Control+C does (POST /api/server/shutdown)."""
+    request = urllib.request.Request(f'http://{HOST}:{port}/api/server/shutdown', data=b'',
+                                     method='POST', headers={SHUTDOWN_TOKEN_HEADER: token})
+    try:
+        with urllib.request.urlopen(request, timeout=5.0) as response:
+            return response.status == 200
+    except (OSError, ValueError):
+        return False
+
+
+def stop_pid(pid: int, timeout: float = STOP_TIMEOUT_S, *, port: int | None = None,
+             token: str | None = None) -> bool:
+    """The server's own clean stop over HTTP when its token is known, else SIGINT
+    (what Control+C sends: agents pause at a safe point, the lab saves its
+    state); SIGTERM if it does not end in time. On Windows a signal from
+    outside cannot be caught, so the fallback there ends the process tree."""
+    asked = bool(token and port and request_shutdown(port, token))
+    if asked and _wait_gone(pid, timeout):
+        return True
+    if WINDOWS:
+        _run(['taskkill', '/PID', str(pid), '/T', '/F'])
+        return _wait_gone(pid, 10.0)
+    steps = ((signal.SIGINT, timeout), (signal.SIGTERM, 10.0))
+    for sig, wait in steps[1:] if asked else steps:
         try:
             os.kill(pid, sig)
         except ProcessLookupError:
@@ -313,8 +387,9 @@ def stop_server(server: Server) -> bool:
         print('Qumus is still starting; try again in a minute.')
         return False
     print(f'Stopping Qumus ({describe(server)}) ...', flush=True)
-    if not stop_pid(server.pid):
-        print(f'Qumus (pid {server.pid}) did not stop. Force it with: kill -9 {server.pid}')
+    if not stop_pid(server.pid, port=server.port, token=server.token):
+        force = f'taskkill /PID {server.pid} /T /F' if WINDOWS else f'kill -9 {server.pid}'
+        print(f'Qumus (pid {server.pid}) did not stop. Force it with: {force}')
         return False
     for pid in leftover_lab_pids():
         stop_pid(pid, 10.0)
@@ -418,7 +493,7 @@ def handle_running(server: Server, args: argparse.Namespace) -> bool:
             print(f'Kept the running Qumus. Opening {url}')
             open_browser(url, args.no_browser)
         else:
-            print('Kept it. Stop it with Stop Qumus.command (or --stop) and start again.')
+            print(f'Kept it. Stop it with Stop {LAUNCHER} (or --stop) and start again.')
         return False
     if not stop_server(server):
         raise SystemExit(1)
@@ -447,27 +522,81 @@ def wait_until_up(process: subprocess.Popen, port: int, log: Path) -> bool:
         time.sleep(0.5)
     print('Qumus did not start. The end of its log:', flush=True)
     with contextlib.suppress(OSError):
-        print(''.join(log.read_text(errors='replace').splitlines(keepends=True)[-30:]))
+        print(''.join(log.read_text(errors='replace', encoding="utf-8").splitlines(keepends=True)[-30:]))
     if process.poll() is None:
         stop_pid(process.pid, 10.0)
     return False
 
 
 def start_background(command: list[str], fd: int, state: dict, port: int = PORT) -> Path | None:
-    """Start the server detached from this terminal; it inherits the lock.
+    """Start the server detached from this terminal; it inherits the lock
+    (LOCK_HANDOFF: it takes the lock itself, see serve_holding_lock).
     Returns its log once it answers, or None (it is stopped again)."""
     log = REPO / LOGS / f'qumus-{_stamp()}.log'
     log.parent.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_hex(16)
+    state = state | {'token': token}
+    env = {**os.environ, SHUTDOWN_TOKEN_ENV: token}
     write_state(fd, state | {'log': str(log)})
     with log.open('ab') as output:
-        process = subprocess.Popen(command, cwd=REPO, stdin=subprocess.DEVNULL, stdout=output,
-                                   stderr=subprocess.STDOUT, start_new_session=True, pass_fds=(fd,))
-    write_state(fd, state | {'pid': process.pid, 'log': str(log)})
+        if LOCK_HANDOFF:
+            os.close(fd)   # released here, taken again by the server itself
+            env['PYTHONUTF8'] = '1'   # its log and files are UTF-8 whatever the code page
+            flags = (getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+                     | getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            wrapped = [sys.executable, str(Path(__file__).resolve()), '--serve-holding-lock',
+                       str(REPO / LOCK), '--', *command]
+            process = subprocess.Popen(wrapped, cwd=REPO, stdin=subprocess.DEVNULL, stdout=output,
+                                       stderr=subprocess.STDOUT, env=env, creationflags=flags,
+                                       start_new_session=not WINDOWS)
+        else:
+            process = subprocess.Popen(command, cwd=REPO, stdin=subprocess.DEVNULL, stdout=output,
+                                       stderr=subprocess.STDOUT, env=env, start_new_session=True,
+                                       pass_fds=(fd,))
+    if not LOCK_HANDOFF:
+        write_state(fd, state | {'pid': process.pid, 'log': str(log)})
     if not wait_until_up(process, port, log):
         return None
-    write_state(fd, state | {'pid': process.pid, 'log': str(log), 'phase': 'running'})
-    os.close(fd)   # the server's copy keeps the lock
+    if not LOCK_HANDOFF:
+        write_state(fd, state | {'pid': process.pid, 'log': str(log), 'phase': 'running'})
+        os.close(fd)   # the server's copy keeps the lock
     return log
+
+
+def serve_holding_lock(argv: list[str]) -> int:
+    """`--serve-holding-lock <lock> -- <python> (-m <module> | <script>) <args...>`:
+    take the workspace lock, record this process as the server, then run the
+    server in this same process, so the lock lives exactly as long as it."""
+    if len(argv) < 4 or argv[1] != '--':
+        print('usage: --serve-holding-lock <lock> -- <python> -m <module> <args...>', file=sys.stderr)
+        return 2
+    path, command = Path(argv[0]), argv[2:]
+    deadline = time.monotonic() + 15.0
+    while (fd := lock_file(path)) is None:
+        if time.monotonic() > deadline:
+            print('Another Qumus start or server holds the workspace lock.', file=sys.stderr)
+            return 1
+        time.sleep(0.2)
+    state = read_state(path) | {'pid': os.getpid(), 'phase': 'starting'}
+    write_state(fd, state)
+    port = int(state.get('port') or PORT)
+
+    def mark_running() -> None:
+        deadline = time.monotonic() + STARTUP_TIMEOUT_S
+        while time.monotonic() < deadline:
+            if health(port, 1.0) is not None:
+                write_state(fd, state | {'phase': 'running'})
+                return
+            time.sleep(0.5)
+
+    threading.Thread(target=mark_running, daemon=True, name='lock-record').start()
+    if command[1] == '-m':
+        sys.argv = [command[2], *command[3:]]
+        runpy.run_module(command[2], run_name='__main__', alter_sys=True)
+    else:
+        sys.argv = command[1:]
+        runpy.run_path(command[1], run_name='__main__')
+    return 0   # fd (and the lock) is released when this process ends
 
 
 def main() -> None:
@@ -481,6 +610,8 @@ def main() -> None:
     parser.add_argument('--stop', action='store_true', help='stop the running Qumus safely')
     parser.add_argument('--restart', action='store_true', help='stop the running Qumus, then start')
     parser.add_argument('--yes', action='store_true', help='answer yes to the restart question')
+    if len(sys.argv) > 1 and sys.argv[1] == '--serve-holding-lock':
+        raise SystemExit(serve_holding_lock(sys.argv[2:]))
     args = parser.parse_args()
     os.chdir(REPO)
     if args.status:
@@ -561,7 +692,7 @@ def main() -> None:
     print('New messages use model credit (estimated $40 workspace cap).', flush=True)
     print('Qumus runs in the background: this window may be closed.', flush=True)
     print(f'Closing every Qumus page in the browser stops it ({STOP_WHEN_CLOSED_S} s later; '
-          'a reload does not). Stop Qumus.command stops it at once.', flush=True)
+          f'a reload does not). Stop {LAUNCHER} stops it at once.', flush=True)
     print(f'Log: {log.relative_to(REPO)}', flush=True)
     open_browser(url, args.no_browser)
 

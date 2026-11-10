@@ -15,16 +15,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import signal
 import time
 from collections.abc import Callable
 
+from qumus2.runtime.oscompat import interrupt_self
+
 log = logging.getLogger(__name__)
 
-
-def interrupt_self() -> None:
-    os.kill(os.getpid(), signal.SIGINT)
+# `--stop` also works over HTTP (POST /api/server/shutdown, ui/app.py): the
+# launcher starts the server with a random token in this variable and keeps it
+# in runs/qumus-server.lock; the request must carry it in this header.
+SHUTDOWN_TOKEN_ENV = "QUMUS_SHUTDOWN_TOKEN"
+SHUTDOWN_TOKEN_HEADER = "X-Qumus-Shutdown-Token"
 
 
 class IdleStop:

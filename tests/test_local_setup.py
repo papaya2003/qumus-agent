@@ -10,14 +10,14 @@ from scripts import setup_qumus
 def test_setup_preserves_private_config_data_and_editor_choices(tmp_path, monkeypatch):
     repo = tmp_path / "a repo"
     repo.mkdir()
-    (repo / ".env.example").write_text("PLACEHOLDER=\n")
-    (repo / ".env").write_text("LOCAL_TEST_SETTING=keep\n")
+    (repo / ".env.example").write_text("PLACEHOLDER=\n", encoding="utf-8")
+    (repo / ".env").write_text("LOCAL_TEST_SETTING=keep\n", encoding="utf-8")
     (repo / "runs/workspace").mkdir(parents=True)
     db = repo / "runs/workspace/qumus.db"
     db.write_bytes(b"existing data")
     settings = tmp_path / ".vscode/settings.json"
     settings.parent.mkdir()
-    settings.write_text(json.dumps({"editor.fontSize": 17, "files.exclude": {"**/.venv": False}}))
+    settings.write_text(json.dumps({"editor.fontSize": 17, "files.exclude": {"**/.venv": False}}), encoding="utf-8")
     templates = repo / "scripts/templates"
     templates.mkdir(parents=True)
     for name in ("Start Qumus.command", "Stop Qumus.command"):
@@ -25,14 +25,14 @@ def test_setup_preserves_private_config_data_and_editor_choices(tmp_path, monkey
     monkeypatch.setattr(setup_qumus, "REPO", repo)
     for _ in range(2):
         setup_qumus.prepare_local_files()
-    assert (repo / ".env").read_text() == "LOCAL_TEST_SETTING=keep\n"
+    assert (repo / ".env").read_text(encoding="utf-8") == "LOCAL_TEST_SETTING=keep\n"
     assert db.read_bytes() == b"existing data"
-    result = json.loads(settings.read_text())
+    result = json.loads(settings.read_text(encoding="utf-8"))
     assert result["editor.fontSize"] == 17 and result["files.exclude"]["**/.venv"] is False
     assert result["files.exclude"]["**/__pycache__"] is True
     launcher = tmp_path / "Start Qumus.command"
-    assert f"QUMUS_REPO='{repo}'" in launcher.read_text()
+    assert f"QUMUS_REPO='{repo}'" in launcher.read_text(encoding="utf-8")
     assert launcher.stat().st_mode & 0o111
     stop = tmp_path / "Stop Qumus.command"
-    assert f"QUMUS_REPO='{repo}'" in stop.read_text() and "--stop" in stop.read_text()
+    assert f"QUMUS_REPO='{repo}'" in stop.read_text(encoding="utf-8") and "--stop" in stop.read_text(encoding="utf-8")
     assert stop.stat().st_mode & 0o111

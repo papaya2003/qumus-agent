@@ -47,17 +47,21 @@ What changed compared with qumus-v2 and what comes next:
 ## Try it (free, no model calls, no hardware)
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev,agents]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,agents,vision]"
 
 # 1. The simulated lab as two windows; look at http://127.0.0.1:8782/api/state
 .venv/bin/qumus2 simlab
 
 # 2. Agents + web page, reaching the simulated lab only through the windows
-.venv/bin/qumus2 serve --contract-lab
+.venv/bin/qumus2 serve --contract-lab --db runs/checks/contract/qumus.db
 
 # 3. The original in-process demo (same as qumus-v2)
 .venv/bin/qumus2 serve
 ```
+
+Every entry point runs the same bench: the v1-linked Hall-bar laboratory and the
+`hallbar_device` scripted scenario. There is no option for the older benches. A
+database made by an older bench is refused; start with a new `--db` path.
 
 `serve` uses scripted agents and costs nothing. `--openai` uses the OpenAI Agents
 SDK through the project gateway and spends money only while the team works on a

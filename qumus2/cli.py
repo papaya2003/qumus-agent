@@ -14,21 +14,17 @@ def _serve_config(args: argparse.Namespace, *, prepare: bool = True):
     import sqlite3
     from pathlib import Path
 
-    from qumus2.config import load_yaml, simulation_profile
+    from qumus2.config import SIM_PROFILE, simulation_profile
     from qumus2.records.device_design import parse_hallbar_target, target_import_binding
     from qumus2.testbench.hallbar import load_imported_hallbar_target, with_hallbar_target
 
     database = Path(args.db).resolve()
     owner_workspace = database.parent.name == "hallbar-linked-owner-20261101"
     selected = getattr(args, "target_bundle", None)
-    if owner_workspace and (args.profile != "hallbar-linked" or not selected):
-        raise ValueError("The owner Hall-bar workspace requires its explicit imported target bundle and linked profile")
-    if selected and (args.profile != "hallbar-linked" or args.reactor):
-        raise ValueError("An imported target requires the linked Hall-bar profile")
-    config = simulation_profile(args.profile) if args.profile else None
-    if args.reactor:
-        config = load_yaml("testbench.yaml")
-        config["reactor"] = {"enabled": True}
+    if owner_workspace and not selected:
+        raise ValueError("The owner Hall-bar workspace requires its explicit imported target bundle")
+    # One bench only: the v1-linked Hall-bar laboratory (owner, 2026-11-10).
+    config = simulation_profile(SIM_PROFILE)
     if selected:
         bundle = Path(selected).resolve()
         if bundle.name == "target.json":
@@ -209,16 +205,11 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--port", type=int, default=8765)
     sp.add_argument("--stop-when-closed", type=float, default=None, metavar="SECONDS",
                     help="stop once no page has been open this long and nothing runs")
-    sp.add_argument("--scenario", default="place_chip_demo")
+    sp.add_argument("--scenario", default="hallbar_device")
     sp.add_argument("--openai", action="store_true",
                          help="OpenAI Agents SDK through QUMUS_OPENAI_* (spends API credit)")
     sp.add_argument("--budget", type=float, default=None, help="estimated USD cap for this run")
     sp.add_argument("--mock", action="store_true", help="scripted agents (the default)")
-    profile = sp.add_mutually_exclusive_group()
-    profile.add_argument("--profile", choices=("hallbar-linked", "hallbar", "integrated", "previous"),
-                         help="fresh Hall-bar tapes/wafer, integrated bench or previous two-arm workspace")
-    profile.add_argument("--reactor", action="store_true",
-                    help="legacy prepared-pair reactor fixture (use --profile integrated for everyday work)")
     sp.add_argument("--target-bundle", help="operator-selected private target.json or its directory; no synthetic fallback")
     sp.add_argument("--target-approval-reference", help="optional expected owner-instruction identity; verifies, never overrides")
     sp.add_argument("--target-approval-sha256", help="optional expected owner-instruction hash")

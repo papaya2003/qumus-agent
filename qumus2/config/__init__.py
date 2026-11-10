@@ -10,6 +10,11 @@ import yaml
 
 DEFAULT_DIR = Path(__file__).parent
 
+#: The one bench every entry point runs (owner, 2026-11-10): the v1-linked
+#: Hall-bar laboratory. The older profiles below remain only for the inherited
+#: unit tests until the simulation moves to its own repository.
+SIM_PROFILE = "hallbar-linked"
+
 
 def config_dir() -> Path:
     override = os.environ.get("QUMUS2_CONFIG_DIR")

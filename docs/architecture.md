@@ -52,7 +52,8 @@ there is no human-approval gate per run.
 
 ## 3. The sim lab
 
-`qumus2 simlab` (or `serve --contract-lab`) builds the qumus-v2 simulated bench once and
+`qumus2 simlab` (or `serve --contract-lab`) builds the qumus-v2 simulated bench (the v1-linked
+Hall-bar laboratory, the only bench any entry point uses) once and
 serves it as two windows, `exfoliation` (:8781) and `stacking` (:8782). Each window lists
 only its own devices; the simulated table has one overview camera, listed by both.
 Besides the basic actions, each window offers its module's whole jobs as actions

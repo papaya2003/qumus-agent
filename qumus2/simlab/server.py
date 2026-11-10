@@ -78,10 +78,12 @@ class SimLabServer:
 
 def main(args: Any) -> None:
     from qumus2.app import build_lab_side
+    from qumus2.config import SIM_PROFILE, simulation_profile
 
     db = Path(args.db)
     db.parent.mkdir(parents=True, exist_ok=True)
-    side = build_lab_side(db, seed=args.seed)
+    # The same Hall-bar laboratory as `serve` (never the older test benches).
+    side = build_lab_side(db, seed=args.seed, testbench_config=simulation_profile(SIM_PROFILE))
     server = SimLabServer(side, host=args.host, motion_delay_s=args.motion_delay,
                           ports={"exfoliation": args.exfoliation_port,
                                  "stacking": args.stacking_port}).start()

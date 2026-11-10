@@ -65,12 +65,10 @@ def test_named_legacy_profiles_preserve_normal_defaults():
     assert simulation_profile() == normal and simulation_profile("hallbar-linked") == linked
 
 
-@pytest.mark.parametrize("options,profile", [(["--profile", "hallbar"], "hallbar"),
-    (["--profile", "hallbar-linked"], "hallbar-linked"),
-    (["--profile", "integrated"], "integrated"), (["--profile", "previous"], "previous"),
-    (["--reactor"], "reactor")])
-def test_cli_passes_exact_profile_before_any_service_or_server(tmp_path, monkeypatch, options, profile):
+def test_cli_always_serves_the_linked_hallbar_bench_before_any_service(tmp_path, monkeypatch):
+    """One bench only (owner, 2026-11-10): no option selects an older layout."""
     from qumus2 import app
+    from qumus2.config import SIM_PROFILE
 
     seen = []
     class BeforeServices(Exception):
@@ -81,15 +79,21 @@ def test_cli_passes_exact_profile_before_any_service_or_server(tmp_path, monkeyp
     monkeypatch.setattr(app, "build_services", capture)
     database = tmp_path / "fresh" / "qumus.db"
     with pytest.raises(BeforeServices):
-        cli.main(["serve", "--db", str(database), "--mock", "--lab-process", "--no-browser", *options])
+        cli.main(["serve", "--db", str(database), "--mock", "--lab-process", "--no-browser"])
     assert seen[0][0] == str(database)
     effective = seen[0][1]
     assert effective["use_openai"] is False and effective["lab_process"] is True
-    expected = simulation_profile(profile) if profile != "reactor" else load_yaml("testbench.yaml")
-    if profile == "reactor":
-        expected["reactor"] = {"enabled": True}
-    assert effective["testbench_config"] == expected
+    assert SIM_PROFILE == "hallbar-linked"
+    assert effective["testbench_config"] == simulation_profile("hallbar-linked")
+    assert effective["scenario"] == "hallbar_device"
     assert not database.parent.exists()
+
+
+@pytest.mark.parametrize("options", [["--profile", "previous"], ["--profile", "integrated"],
+                                     ["--profile", "hallbar"], ["--reactor"]])
+def test_cli_has_no_older_bench_options(tmp_path, options):
+    with pytest.raises(SystemExit):
+        cli.main(["serve", "--db", str(tmp_path / "qumus.db"), "--mock", "--no-browser", *options])
 
 
 @pytest.mark.parametrize("option", ["--linked-workspace", "--hallbar-workspace", "--integrated-workspace",

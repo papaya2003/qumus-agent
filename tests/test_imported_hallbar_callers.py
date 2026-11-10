@@ -145,8 +145,8 @@ def test_guard_missing_registry_refuses_without_recreating_it(campaign, tmp_path
     assert not missing.parent.exists()
 
 
-def serve_args(database, bundle=None, profile="hallbar-linked"):
-    return argparse.Namespace(db=str(database), profile=profile, reactor=False,
+def serve_args(database, bundle=None):
+    return argparse.Namespace(db=str(database),
         target_bundle=str(bundle) if bundle else None)
 
 
@@ -165,7 +165,7 @@ def test_cli_resolves_and_copies_target_before_services(bundle, tmp_path, monkey
         raise BeforeServices
     monkeypatch.setattr(app, "build_services", capture)
     with pytest.raises(BeforeServices):
-        cli.main(["serve", "--mock", "--db", str(database), "--profile", "hallbar-linked",
+        cli.main(["serve", "--mock", "--db", str(database),
                   "--target-bundle", str(directory), "--no-browser"])
     chip = next(s for s in seen[0]["initial_samples"] if s["id"] == "chip_e01")
     assert chip["props"]["device_design_target"] == target.model_dump(mode="json")

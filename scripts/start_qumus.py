@@ -110,7 +110,7 @@ def workspace_mismatch(database: Path, bundle: Path) -> str | None:
     if occupied and not database.with_suffix('.testbench.pkl').exists():
         return 'its saved laboratory state is missing'
     try:
-        _serve_config(argparse.Namespace(db=str(database), profile='hallbar-linked', reactor=False,
+        _serve_config(argparse.Namespace(db=str(database),
                                          target_bundle=str(bundle)), prepare=False)
     except ValueError as error:
         return str(error)
@@ -515,7 +515,7 @@ def main() -> None:
         raise SystemExit(2) from None
     command = [sys.executable, '-m', 'qumus2', 'serve', '--openai', '--lab-process',
                '--db', DATABASE, '--budget', '40', '--host', HOST, '--port', str(PORT),
-               '--profile', 'hallbar-linked', '--target-bundle', str(bundles[0]),
+               '--target-bundle', str(bundles[0]),
                '--stop-when-closed', str(STOP_WHEN_CLOSED_S)]
     command.append('--no-browser')   # the launcher opens the page once the server answers
     if args.check_only:

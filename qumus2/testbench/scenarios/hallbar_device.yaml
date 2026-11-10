@@ -1,6 +1,6 @@
 # Scripted demo: the plan #105 goal. hBN on Gr onto the eight-electrode wafer
 # (chip_e01), starting from tapes. Run with the Hall-bar bench:
-#   python -m qumus2 serve --profile hallbar-linked --scenario hallbar_device
+#   python -m qumus2 serve   (the default bench and scenario)
 # (add --target-bundle <dir> for an operator-imported GDS target). Free: no model.
 # The stand-in picker submits the placement solver's best hBN/Gr pair
 # (get_flake_candidates target_pairs) and otherwise asks for one more chip of the

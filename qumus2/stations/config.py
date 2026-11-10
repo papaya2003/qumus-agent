@@ -17,6 +17,11 @@ packaged default reactor does. Such a station has no record feed and no contract
 (qumus2/reactor/tools.py) drive it. Relative `simlab_dir` is relative to the
 stations.yaml file.
 
+`contract: auto | 1 | 2` (default auto) chooses how a contract module is commanded:
+contract 2 through lab-contract's labclient when the station offers it, else v1;
+`entry:` / `service:` name a contract 2 station entry and service when they differ
+from the module's URL and name (qumus2/stations/link.py).
+
 Search order: --stations PATH, env QUMUS_STATIONS, ./stations.yaml, the packaged
 default (all three modules simulated on loopback).
 """
@@ -121,6 +126,12 @@ def parse(raw: dict[str, Any], *, path: Path | None = None) -> Stations:
         extra = {k: v for k, v in entry.items() if k not in ("url", "kind")}
         if extra.get("adapter", "contract") not in ADAPTERS:
             raise ValueError(f"stations.yaml: {name}.adapter must be one of {', '.join(ADAPTERS)}")
+        if "contract" in extra:
+            extra["contract"] = str(extra["contract"])
+            if extra["contract"] not in ("auto", "1", "2"):
+                raise ValueError(f"stations.yaml: {name}.contract must be auto, 1 or 2")
+        if "entry" in extra:
+            extra["entry"] = _normalise_url(extra["entry"], f"{name}.entry")
         modules[name] = Station(name, _normalise_url(entry.get("url"), name), kind, extra)
     records_from = raw.get("records_from", "stacking")
     feeds = (records_from,) if isinstance(records_from, str) else tuple(records_from or ())
@@ -153,9 +164,11 @@ def load(path: str | Path | None = None) -> Stations:
 
 
 def from_urls(urls: dict[str, str], *, kind: str = "sim",
-              records_from: str | list[str] = "stacking") -> Stations:
-    """Stations for tests and scripts: {module: url}."""
+              records_from: str | list[str] = "stacking",
+              extra: dict[str, dict[str, Any]] | None = None) -> Stations:
+    """Stations for tests and scripts: {module: url} (+ per module extra keys)."""
     feeds = [records_from] if isinstance(records_from, str) else list(records_from)
     feeds = [f for f in feeds if f in urls] or [next(iter(urls))]
-    return parse({"modules": {m: {"url": u, "kind": kind} for m, u in urls.items()},
+    return parse({"modules": {m: {**(extra or {}).get(m, {}), "url": u, "kind": kind}
+                              for m, u in urls.items()},
                   "records_from": feeds})

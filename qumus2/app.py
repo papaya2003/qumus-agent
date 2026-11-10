@@ -105,7 +105,8 @@ def build_services(db_path: str | Path = ":memory:", *,
     store = RunStore(db_path, bench=st.bench)
     try:
         jobs = connect(st.contract_urls, store, client_id, records_from=list(st.feeds),
-                       image_dir=image_dir, mirror_poll_s=mirror_poll_s)
+                       image_dir=image_dir, mirror_poll_s=mirror_poll_s,
+                       options={m: st.modules[m].extra for m in st.contract_urls})
     except Exception:
         store.close()
         if simlab is not None:

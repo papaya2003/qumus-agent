@@ -70,7 +70,10 @@ def test_save_and_restore_both_halves(tmp_path):
     assert len((sp / "brain" / "timeline.jsonl").read_text().splitlines()) == 1
     assert find_savepoint(tmp_path / "run1") == sp
 
+    later = tmp_path / "run1" / "images" / "microscope" / "m2.jpg"
+    later.write_bytes(b"taken by run1 after the save")  # a resumed lab names its next picture m2 too
     out = restore_savepoint(tmp_path / "run1", tmp_path / "run2" / "qumus.db")
+    assert not (tmp_path / "run2" / "images" / "microscope" / "m2.jpg").exists()
     assert out["lab_dir"] == sp / "lab"
     restored = RunStore(tmp_path / "run2" / "qumus.db")
     assert restored.last_event_id() == s.store.last_event_id()
@@ -132,3 +135,18 @@ def test_resume_scenario_can_redo_the_plan():
     acts = resume_scenario(sc, redo_plan=True)["turns"][0]["actions"]
     assert [list(a)[0] for a in acts] == ["say", "delegate", "tool", "done", "delegate"]
     assert acts[-1] == {"delegate": {"to": "picker"}}
+
+
+def test_restore_without_picture_list_uses_file_times(tmp_path):
+    import os
+
+    s, _ = _services(tmp_path)
+    sp = save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01")
+    (sp / "brain" / "images.json").unlink()
+    meta = json.loads((sp / "savepoint.json").read_text())
+    later = tmp_path / "run1" / "images" / "microscope" / "m2.jpg"
+    later.write_bytes(b"later")
+    os.utime(later, (meta["saved_wall"] + 60, meta["saved_wall"] + 60))
+    restore_savepoint(sp, tmp_path / "run2" / "qumus.db")
+    assert (tmp_path / "run2" / "images" / "microscope" / "m1.jpg").exists()
+    assert not (tmp_path / "run2" / "images" / "microscope" / "m2.jpg").exists()

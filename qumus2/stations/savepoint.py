@@ -12,6 +12,7 @@ reads the flake candidates (`get_flake_candidates`):
     <savepoint>/brain/qumus.db                 brain run store (SQLite backup)
     <savepoint>/brain/qumus.openai-sessions.db model conversation, if any
     <savepoint>/brain/timeline.jsonl           recorder timeline up to the save
+    <savepoint>/brain/images.json              the run's pictures at the save
     <savepoint>/lab/                           written by qumus-simlab itself
                                                (POST /api/sim/checkpoint)
     <savepoint>/savepoint.json                 what, when, seed, target, code
@@ -44,6 +45,7 @@ SAVE_BEFORE = frozenset({"get_flake_candidates"})
 OPEN_JOB = frozenset({"queued", "running", "paused", "parked", "waiting_human"})
 SESSIONS_SUFFIX = ".openai-sessions.db"
 TIMELINE = "timeline.jsonl"
+IMAGES = "images.json"
 REPO = Path(__file__).resolve().parents[2]
 
 #: what the operator says when a resumed live run starts (the scripted scenario
@@ -125,6 +127,12 @@ def save_savepoint(services: Any, dest: str | Path, *, label: str = "",
             _backup(src, tmp / "brain" / f"qumus{SESSIONS_SUFFIX}")
         finally:
             src.close()
+    images = work / "images"
+    if images.is_dir():
+        # the pictures that belong to this save point: a resumed lab names its new
+        # pictures like the ones this run takes after the save, so only these are reused
+        names = sorted(p.relative_to(images).as_posix() for p in images.rglob("*") if p.is_file())
+        (tmp / "brain" / IMAGES).write_text(json.dumps(names))
     timeline = work / TIMELINE
     if timeline.exists():
         _copy_timeline(timeline, tmp / "brain" / TIMELINE, timeline.stat().st_size, last_id)
@@ -220,6 +228,27 @@ def _link_or_copy(src: str, dst: str) -> None:
         shutil.copy2(src, dst)
 
 
+def _restore_images(src: Path, dst: Path, sp: Path, saved_wall: float) -> int:
+    """Hard-link (or copy) the pictures taken up to the save into the resumed run.
+
+    Only those: the original run may have gone on after the save, and the
+    resumed lab names its new pictures the same way, so a later file with the
+    same name would stand in for the resumed lab's picture (the mirror does not
+    download a name it already has). The save point lists its pictures; older
+    save points without the list use the file times."""
+    listed = sp / "brain" / IMAGES
+    if listed.exists():
+        names = [n for n in json.loads(listed.read_text()) if (src / n).is_file()]
+    else:
+        names = [p.relative_to(src).as_posix() for p in src.rglob("*")
+                 if p.is_file() and p.stat().st_mtime <= saved_wall]
+    for name in names:
+        (dst / name).parent.mkdir(parents=True, exist_ok=True)
+        _link_or_copy(str(src / name), str(dst / name))
+    dst.mkdir(parents=True, exist_ok=True)
+    return len(names)
+
+
 def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, Any]:
     """Copy the brain half into the fresh run folder of `db_path`.
 
@@ -248,9 +277,7 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
         shutil.copytree(targets, db.parent / "targets", symlinks=False)
     images = photo_root / "images"
     if images.is_dir() and not (db.parent / "images").exists():
-        # mirrored pictures taken before the save: hard links (copies across disks), so the
-        # resumed run writes its NEW pictures into its own folder, never the original's
-        shutil.copytree(images, db.parent / "images", symlinks=False, copy_function=_link_or_copy)
+        _restore_images(images, db.parent / "images", sp, float(meta.get("saved_wall") or 0))
     resumed = {"savepoint": str(sp), **{k: meta.get(k) for k in (
         "workspace", "last_event_id", "saved_at", "git_commit", "label")}}
     (db.parent / "resumed_from.json").write_text(json.dumps(resumed, indent=1))

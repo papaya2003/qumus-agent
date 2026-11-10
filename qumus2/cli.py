@@ -133,8 +133,19 @@ def _replay(args: argparse.Namespace) -> None:
     uvicorn.run(create_replay_app(args.recording), host=args.host, port=args.port, log_level="warning")
 
 
+def _stack_dumps() -> None:
+    """`kill -USR1 <pid>` prints every thread's stack to stderr (diagnoses a hung brain)."""
+    import faulthandler
+    import signal
+
+    faulthandler.enable()
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
+
+
 def main(argv: list[str] | None = None) -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _stack_dumps()
     ap = argparse.ArgumentParser(prog="qumus2")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("serve", help="start the brain (agents + web page) on the configured stations")

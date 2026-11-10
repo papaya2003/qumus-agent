@@ -91,7 +91,7 @@ class FakeLab:
     def urls(self) -> dict[str, str]:
         return {m: svc.base_url for m, svc in self.services.items()}
 
-    def stations(self, records_from: str = "stacking") -> Stations:
+    def stations(self, records_from: str | list[str] = "stacking") -> Stations:
         return from_urls(self.urls, records_from=records_from)
 
     # ----- the change log -----------------------------------------------------

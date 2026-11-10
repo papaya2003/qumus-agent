@@ -223,12 +223,12 @@ class ContractJobService:
 
 
 def connect(urls: dict[str, str], store: Any, client_id: str = "qumus-agent", *,
-            records_from: str = "stacking", image_dir: Any = None, mirror_poll_s: float = 0.5,
+            records_from: str | list[str] = "stacking", image_dir: Any = None, mirror_poll_s: float = 0.5,
             start_mirror: bool = True, require_all: bool = True, **kwargs: Any) -> ContractJobService:
     """Clients for every station, the record mirror from `records_from`, and the job service.
 
     `require_all=False` keeps going when a station is offline (it is retried on use)."""
-    from qumus2.stations.mirror import RecordMirror
+    from qumus2.stations.mirror import MirrorSet, RecordMirror
 
     clients = {m: ContractClient(url, client_id, name=m) for m, url in urls.items()}
     for c in clients.values():
@@ -237,8 +237,11 @@ def connect(urls: dict[str, str], store: Any, client_id: str = "qumus-agent", *,
         except ContractError:
             if require_all:
                 raise
-    feed = clients.get(records_from) or next(iter(clients.values()))
-    mirror = RecordMirror(store, feed, image_dir=image_dir, poll_s=mirror_poll_s)
+    feeds = [records_from] if isinstance(records_from, str) else list(records_from)
+    feeds = [f for f in feeds if f in clients] or [next(iter(clients))]
+    mirrors = [RecordMirror(store, clients[f], image_dir=image_dir, poll_s=mirror_poll_s, name=f,
+                            primary=i == 0) for i, f in enumerate(feeds)]
+    mirror: Any = mirrors[0] if len(mirrors) == 1 else MirrorSet(mirrors)
     service = ContractJobService(store, clients, mirror=mirror, **kwargs)
     service.learn()
     mirror.sync()

@@ -103,7 +103,7 @@ def build_services(db_path: str | Path = ":memory:", *,
     session_start = _last_event_id(db_path)
     store = RunStore(db_path, bench=st.bench)
     try:
-        jobs = connect(st.urls, store, client_id, records_from=st.records_from, image_dir=image_dir,
+        jobs = connect(st.urls, store, client_id, records_from=list(st.feeds), image_dir=image_dir,
                        mirror_poll_s=mirror_poll_s)
     except Exception:
         store.close()

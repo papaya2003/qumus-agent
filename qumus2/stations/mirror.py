@@ -5,7 +5,8 @@ jobs, the samples it creates or moves, reservations, lab events and pictures.
 The brain owns projects, plans, instructions, experience and agent events. Each
 side keeps its OWN SQLite store; they meet only over contract v1 HTTP:
 
-    lab -> brain   GET /api/records?since=<seq>   (one module, stations.yaml records_from)
+    lab -> brain   GET /api/records?since=<seq>   (stations.yaml records_from: one module, or a
+                   list when stations keep separate stores, e.g. [stacking, reactor])
                    {"changes": [{"seq", "table", "key", "row"|null}], "next": <seq>}
                    table: sample | reservation | run | step | event
     brain -> lab   command put_records {"project": [...], "samples": [...],
@@ -123,7 +124,17 @@ class RecordMirror:
 
     def __init__(self, store: Any, client: ContractClient, *, image_dir: str | Path | None = None,
                  poll_s: float = 0.5, push_client: ContractClient | None = None,
-                 on_error: Callable[[str], None] | None = None) -> None:
+                 on_error: Callable[[str], None] | None = None, name: str | None = None,
+                 primary: bool = True, same_lab: Callable[[str], bool] | None = None) -> None:
+        self.name = name
+        #: the primary feed owns the shared ledger: a new lab there clears mirrored samples
+        self.primary = primary
+        #: secondary feeds: True when this lab_id is already mirrored through another feed
+        self.same_lab = same_lab
+        self.duplicate = False
+        self.lab_id: str | None = None
+        suffix = "" if primary or not name else f":{name}"
+        self._cursor_meta, self._lab_meta = CURSOR_META + suffix, LAB_ID_META + suffix
         self.store = store
         self.client = client
         self.push_client = push_client or client
@@ -141,7 +152,7 @@ class RecordMirror:
 
     # ----- cursor -------------------------------------------------------------
     def _load_cursor(self) -> Any:
-        raw = self.store.get_meta(CURSOR_META)
+        raw = self.store.get_meta(self._cursor_meta)
         if raw is None:
             return 0
         try:
@@ -150,7 +161,7 @@ class RecordMirror:
             return raw
 
     def _save_cursor(self) -> None:
-        self.store.set_meta(CURSOR_META, _j(self._cursor))
+        self.store.set_meta(self._cursor_meta, _j(self._cursor))
 
     # ----- pull ---------------------------------------------------------------
     def sync(self, *, max_pages: int = 50) -> int:
@@ -170,17 +181,25 @@ class RecordMirror:
                 if self._stop.is_set() and threading.current_thread() is self._thread:
                     return total  # closing: leave the store alone
                 lab_id = page.get("lab_id")
-                if lab_id is not None and str(lab_id) != (self.store.get_meta(LAB_ID_META) or str(lab_id)):
+                if lab_id is not None:
+                    self.lab_id = str(lab_id)
+                    if not self.primary and self.same_lab is not None and self.same_lab(self.lab_id):
+                        # several windows of one laboratory serve the same feed: read it once
+                        self.duplicate, self.online, self.last_error = True, True, None
+                        return total
+                    self.duplicate = False
+                if lab_id is not None and str(lab_id) != (self.store.get_meta(self._lab_meta) or str(lab_id)):
                     # a different laboratory store (e.g. a fresh simulated lab): start over;
                     # the old lab's ledger no longer describes the bench
                     self._cursor = 0
-                    self.store._x("DELETE FROM sample")
-                    self.store._x("DELETE FROM reservation")
-                    self.store.set_meta(LAB_ID_META, str(lab_id))
+                    if self.primary:
+                        self.store._x("DELETE FROM sample")
+                        self.store._x("DELETE FROM reservation")
+                    self.store.set_meta(self._lab_meta, str(lab_id))
                     self._save_cursor()
                     continue
                 if lab_id is not None:
-                    self.store.set_meta(LAB_ID_META, str(lab_id))
+                    self.store.set_meta(self._lab_meta, str(lab_id))
                 changes = page.get("changes") or []
                 for change in changes:
                     self._apply(change)
@@ -372,3 +391,66 @@ class RecordMirror:
             self._thread.join(timeout=self.client.timeout_s + 2.0)
         with self._sync_lock:  # a sync from another thread finishes first
             pass
+
+
+class MirrorSet:
+    """Several record feeds (stations with separate stores) behind one mirror interface.
+
+    The first feed is primary: it receives put_records and owns the shared sample
+    ledger. A later feed whose lab_id equals an earlier one's is skipped (windows of
+    one laboratory, such as qumus-simlab's three, serve the same feed)."""
+
+    def __init__(self, mirrors: list[RecordMirror]) -> None:
+        if not mirrors:
+            raise ValueError("at least one record feed is needed")
+        self.mirrors = mirrors
+        self.primary = mirrors[0]
+        for i, m in enumerate(mirrors[1:], start=1):
+            earlier = mirrors[:i]
+            m.same_lab = lambda lab_id, earlier=earlier: any(e.lab_id == lab_id and not e.duplicate
+                                                             for e in earlier)
+
+    @property
+    def images(self) -> ImageCache:
+        return self.primary.images
+
+    @property
+    def online(self) -> bool:
+        return all(m.online for m in self.mirrors)
+
+    @property
+    def last_error(self) -> str | None:
+        return next((f"{m.name}: {m.last_error}" for m in self.mirrors if m.last_error), None)
+
+    @property
+    def applied(self) -> int:
+        return sum(m.applied for m in self.mirrors)
+
+    @property
+    def running(self) -> bool:
+        return all(m.running for m in self.mirrors)
+
+    def sync(self) -> int:
+        return sum(m.sync() for m in self.mirrors)
+
+    def push(self, **kwargs: Any) -> dict[str, Any]:
+        return self.primary.push(**kwargs)
+
+    def wait_for(self, predicate: Callable[[], bool], timeout_s: float = 5.0) -> bool:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            self.sync()
+            if predicate():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+    def start(self) -> MirrorSet:
+        for m in self.mirrors:
+            m.start()
+        return self
+
+    def close(self) -> None:
+        for m in self.mirrors:
+            m.close()

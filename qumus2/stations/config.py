@@ -1,16 +1,16 @@
 """stations.yaml: where each laboratory module is served.
 
     simlab_dir: ../qumus-simlab        # checkout the launcher starts when stations are sim
-    records_from: stacking             # module whose /api/records feed the brain mirrors
+    records_from: stacking             # module(s) whose /api/records feed the brain mirrors:
+                                       # one name, or a list when stations keep separate
+                                       # stores (e.g. [stacking, reactor] with a reactor bridge)
     modules:
       exfoliation: {url: "http://127.0.0.1:8781/", kind: sim}
       stacking:    {url: "http://127.0.0.1:8782/", kind: sim}
       reactor:     {url: "http://127.0.0.1:8783/", kind: sim}
 
 `kind` is `sim` (qumus-simlab window) or `real` (a laboratory computer, usually
-through an SSH tunnel). Extra keys of a module entry are kept for its adapter,
-e.g. the real reactor console: `{kind: real, url: http://100.64.0.1:8080/lab/,
-adapter: console, session: <name>}`. Relative `simlab_dir` is relative to the
+through an SSH tunnel). Extra keys of a module entry are kept with it. Relative `simlab_dir` is relative to the
 stations.yaml file.
 
 Search order: --stations PATH, env QUMUS_STATIONS, ./stations.yaml, the packaged
@@ -46,9 +46,14 @@ class Station:
 @dataclass(frozen=True)
 class Stations:
     modules: dict[str, Station]
-    records_from: str = "stacking"
+    feeds: tuple[str, ...] = ("stacking",)
     simlab_dir: Path | None = None
     path: Path | None = None
+
+    @property
+    def records_from(self) -> str:
+        """The primary feed: put_records, the bench drawing and the shared ledger."""
+        return self.feeds[0]
 
     @property
     def urls(self) -> dict[str, str]:
@@ -68,7 +73,7 @@ class Stations:
         return "real" if not self.any_sim else "sim"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"records_from": self.records_from,
+        return {"records_from": self.records_from, "feeds": list(self.feeds),
                 "simlab_dir": str(self.simlab_dir) if self.simlab_dir else None,
                 "path": str(self.path) if self.path else None,
                 "modules": {m: s.to_dict() for m, s in self.modules.items()}}
@@ -97,12 +102,16 @@ def parse(raw: dict[str, Any], *, path: Path | None = None) -> Stations:
         extra = {k: v for k, v in entry.items() if k not in ("url", "kind")}
         modules[name] = Station(name, _normalise_url(entry.get("url"), name), kind, extra)
     records_from = raw.get("records_from", "stacking")
-    if records_from not in modules:
-        raise ValueError(f"stations.yaml: records_from {records_from!r} is not a configured module")
+    feeds = (records_from,) if isinstance(records_from, str) else tuple(records_from or ())
+    if not feeds:
+        raise ValueError("stations.yaml: records_from needs at least one module")
+    for feed in feeds:
+        if feed not in modules:
+            raise ValueError(f"stations.yaml: records_from {feed!r} is not a configured module")
     simlab_dir = raw.get("simlab_dir")
     base = path.parent if path is not None else REPO_ROOT
     resolved = (base / simlab_dir).resolve() if simlab_dir else None
-    return Stations(modules, records_from, resolved, path)
+    return Stations(modules, feeds, resolved, path)
 
 
 def load(path: str | Path | None = None) -> Stations:
@@ -119,7 +128,10 @@ def load(path: str | Path | None = None) -> Stations:
     return stations
 
 
-def from_urls(urls: dict[str, str], *, kind: str = "sim", records_from: str = "stacking") -> Stations:
+def from_urls(urls: dict[str, str], *, kind: str = "sim",
+              records_from: str | list[str] = "stacking") -> Stations:
     """Stations for tests and scripts: {module: url}."""
+    feeds = [records_from] if isinstance(records_from, str) else list(records_from)
+    feeds = [f for f in feeds if f in urls] or [next(iter(urls))]
     return parse({"modules": {m: {"url": u, "kind": kind} for m, u in urls.items()},
-                  "records_from": records_from if records_from in urls else next(iter(urls))})
+                  "records_from": feeds})

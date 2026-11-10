@@ -323,7 +323,7 @@ def test_billing_snapshot_request_evidence_has_real_api_caller_and_preserves_acc
                 'total_usd': 100, 'by_model': [{'model': ASTRA, 'usd': 100, 'tokens': 1_000_000,
                                               'requests': 100}],
                 'by_request': [bill(source='https://physics.bytefuture.ai/dashboard/usage')]}
-    (tmp_path / 'gateway-billing.json').write_text(json.dumps(snapshot))
+    (tmp_path / 'gateway-billing.json').write_text(json.dumps(snapshot), encoding="utf-8")
     with TestClient(create_app(services, start_driver=False)) as client:
         result = client.get('/api/billing').json()
     assert result['status'] == 'snapshot'

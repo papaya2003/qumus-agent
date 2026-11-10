@@ -43,7 +43,7 @@ def test_stop_instruction_interrupts_and_stops_jobs(services):
 
 def test_ui_only_endpoints(services, tmp_path):
     (tmp_path / "frame.png").write_bytes(b"\x89PNG\r\n\x1a\n")
-    (tmp_path / "secret.txt").write_text("no")
+    (tmp_path / "secret.txt").write_text("no", encoding="utf-8")
     app = create_app(services, start_driver=False, data_dir=tmp_path)
     with TestClient(app) as c:
         assert c.get("/api/plan/history").json() == []

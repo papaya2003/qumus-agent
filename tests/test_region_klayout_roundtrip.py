@@ -53,7 +53,7 @@ def test_exact_pixel_regions_survive_native_gds_roundtrip(tmp_path, fill_hole):
     else:
         program += "verify(reopened)\n"
     path = tmp_path/"roundtrip-control.py"
-    path.write_text(program)
+    path.write_text(program, encoding="utf-8")
     result = subprocess.run([executable, "-b", "-r", str(path)], text=True, capture_output=True, timeout=30)
     assert result.returncode == 0, result.stdout+result.stderr
     assert (tmp_path/"analytic-regions.gds").is_file()

@@ -39,6 +39,66 @@ a scratch replay on another port, are never touched.
 `--restart` restarts without asking about the version; `--yes` answers the
 question with yes. There is no terminal-bound mode any more.
 
+## On Windows
+
+The brain (this repository) and the simulated laboratory (`qumus-simlab`) run on
+Windows 10/11 with Python 3.11 or newer, from two clones side by side
+(2026-11-10). Nothing in this section drives real instruments; those are
+`qumus-lab`'s.
+
+```bat
+git clone https://github.com/papaya2003/qumus-agent.git
+git clone https://github.com/papaya2003/qumus-simlab.git
+cd qumus-simlab
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+cd ..\qumus-agent
+py -3 scripts\setup_qumus.py
+.venv\Scripts\python.exe scripts\check_platform.py
+```
+
+`check_platform.py` is a free one-command self-check: scripted agents, no model
+calls, no instruments, a temporary folder and a free port for the brain (the
+sim lab's own ports 8781-8783 must be free). It starts qumus-simlab from the
+clone beside this one and prints PASS/FAIL for install, encoding, start, run,
+stop and export.
+
+Not in Git, copied by hand from the Mac: the model gateway's `.env` (never
+commit it) and the private Hall-bar target bundle (`target-a518-v1chip`, passed
+with `--target-bundle`). A live run is started like on the Mac, with the
+environment variables set by `set NAME=value` (cmd) or `$env:NAME="value"`
+(PowerShell) instead of `NAME=value` in front of the command. Turn off sleep in
+the power settings for long runs: a sleeping computer lets the module leases
+expire, and the lab pauses its jobs.
+
+Then double-click **Start Qumus.bat** / **Stop Qumus.bat** in the repository
+folder (setup also writes copies next to it, like the Mac `.command` files).
+
+What differs from the Mac, and why:
+
+| | macOS | Windows |
+| --- | --- | --- |
+| Launcher | `Start/Stop Qumus.command` (zsh) | `Start/Stop Qumus.bat` (`scripts\qumus_launcher.bat`) |
+| Environment | `.venv/bin/python` | `.venv\Scripts\python.exe` (qumus-simlab's too) |
+| Workspace lock | `flock`, inherited by the server | byte-range lock (`msvcrt`) that the server takes itself (`start_qumus.py --serve-holding-lock`) |
+| Stop | HTTP stop request (token in the lock file), else SIGINT then SIGTERM | HTTP stop request, else `taskkill /T /F` (a signal from outside cannot be caught on Windows) |
+| Keep awake | `caffeinate -dimsu -w <pid>` | power settings: never sleep while plugged in |
+| Text files | UTF-8 | UTF-8 everywhere (`encoding="utf-8"` on every read/write; the launcher also sets `PYTHONUTF8=1`), because the Windows default is the locale code page (GBK) |
+
+Checked without a Windows machine: every text read/write in both repositories
+names UTF-8 (tests scan all calls; ruff rule PLW1514 catches new ones), the
+brain starts under a non-UTF-8 default encoding, POSIX-only calls are scanned
+for, and the Windows code paths are exercised by tests that pretend to be
+Windows plus a full self-check with the Windows start path
+(`check_platform.py --handoff`). Only a real Windows run can confirm:
+double-clicking the `.bat` files, that the background server survives closing
+the window, the `msvcrt` lock and `taskkill` fallback. Run `check_platform.py`
+there once.
+
+Run folders still record photo paths as absolute paths of the computer that
+made them, so a run folder copied between the Mac and a Windows computer does
+not resume; exported recordings (History) are self-contained and do move.
+
 ## Current local versions
 
 | Version | Entry | Purpose |

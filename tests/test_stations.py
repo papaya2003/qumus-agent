@@ -46,7 +46,7 @@ def test_stations_yaml_default_and_errors(tmp_path):
     f = tmp_path / "stations.yaml"
     f.write_text("simlab_dir: lab\nrecords_from: stacking\nmodules:\n"
                  "  stacking: {url: 'http://192.168.1.20:8782', kind: real}\n"
-                 "  reactor: {url: 'http://127.0.0.1:18772/lab/', kind: real, adapter: console, session: qumus}\n")
+                 "  reactor: {url: 'http://127.0.0.1:18772/lab/', kind: real, adapter: console, session: qumus}\n", encoding="utf-8")
     st = config.load(f)
     assert st.modules["stacking"].url == "http://192.168.1.20:8782/"  # another computer: only the URL differs
     assert st.modules["reactor"].extra == {"adapter": "console", "session": "qumus"}
@@ -54,7 +54,7 @@ def test_stations_yaml_default_and_errors(tmp_path):
     for bad in ("modules: {}", "modules: {cooking: {url: 'http://x/'}}",
                 "modules: {stacking: {url: 'ftp://x/'}}", "modules: {stacking: {url: 'http://x/', kind: maybe}}",
                 "records_from: reactor\nmodules: {stacking: {url: 'http://x/'}}"):
-        f.write_text(bad)
+        f.write_text(bad, encoding="utf-8")
         with pytest.raises(ValueError):
             config.load(f)
     with pytest.raises(FileNotFoundError):

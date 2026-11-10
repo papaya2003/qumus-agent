@@ -85,7 +85,7 @@ def load_scenario(name_or_path: str) -> dict[str, Any]:
     p = Path(name_or_path)
     if not p.exists():
         p = SCENARIOS / f"{name_or_path}.yaml"
-    return yaml.safe_load(p.read_text())
+    return yaml.safe_load(p.read_text(encoding="utf-8"))
 
 
 class ScriptedRuntime:

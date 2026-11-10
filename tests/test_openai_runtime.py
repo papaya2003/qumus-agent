@@ -274,7 +274,7 @@ def test_credentials_are_project_scoped_and_never_printed(tmp_path, monkeypatch)
     p = tmp_path / ".env"
     p.write_text("QUMUS_OPENAI_API_KEY=private-token\nQUMUS_OPENAI_MODEL=openai/gpt-6-astra\n"
                  "QUMUS_OPENAI_BASE_URL=https://physics.bytefuture.ai/v1\n"
-                 "QUMUS_OPENAI_API=chat_completions\n")
+                 "QUMUS_OPENAI_API=chat_completions\n", encoding="utf-8")
     c = load_openai_credentials(p)
     assert c.base_url.endswith("/v1") and c.model_id == "openai/gpt-6-astra"
     assert "private-token" not in repr(c)

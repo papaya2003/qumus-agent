@@ -191,5 +191,5 @@ def test_capability_report(reactor_demo):
     rows = lab.capability_table(reports)
     target = os.environ.get("QUMUS_REACTOR_REPORT")
     if target:
-        Path(target).write_text(json.dumps({"started": started, "rows": rows}, indent=2))
+        Path(target).write_text(json.dumps({"started": started, "rows": rows}, indent=2), encoding="utf-8")
     assert any(r["offered"] for r in rows)

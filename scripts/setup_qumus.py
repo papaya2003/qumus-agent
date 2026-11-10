@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -15,13 +16,25 @@ import venv
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+WINDOWS = os.name == "nt"
 HIDDEN = ("**/.git", "**/.venv", "**/.venv-v1compare", "**/__pycache__",
           "**/.pytest_cache", "**/.ruff_cache", "**/.mypy_cache", "**/*.egg-info")
 
 
+def launcher_names() -> tuple[str, str]:
+    """Windows: double-click .bat launchers; macOS: .command (both run scripts/start_qumus.py)."""
+    return (("Start Qumus.bat", "Stop Qumus.bat") if WINDOWS
+            else ("Start Qumus.command", "Stop Qumus.command"))
+
+
+def venv_python(env: Path) -> Path:
+    """The interpreter inside a virtual environment on this system."""
+    return env / ("Scripts/python.exe" if WINDOWS else "bin/python")
+
+
 def install_environment(folder: str, extras: str) -> None:
     env = REPO / folder
-    python = env / "bin" / "python"
+    python = venv_python(env)
     if not python.exists():
         venv.EnvBuilder(with_pip=True).create(env)
     subprocess.run([str(python), "-m", "pip", "install", "-e", f".[{extras}]"],
@@ -31,7 +44,7 @@ def install_environment(folder: str, extras: str) -> None:
 def write_editor_settings(root: Path) -> None:
     path = root / ".vscode" / "settings.json"
     try:
-        settings = json.loads(path.read_text()) if path.exists() else {}
+        settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         if not isinstance(settings, dict) or not isinstance(settings.get("files.exclude", {}), dict):
             raise ValueError("settings must contain objects")
     except (ValueError, OSError):
@@ -41,25 +54,33 @@ def write_editor_settings(root: Path) -> None:
     for pattern in HIDDEN:
         exclude.setdefault(pattern, True)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(settings, indent=2) + "\n")
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
+def _read_exact(path: Path) -> str:
+    with path.open(encoding="utf-8", newline="") as handle:   # Path.read_text(newline=) is 3.13+
+        return handle.read()
 
 
 def prepare_local_files(*, refresh_launcher: bool = False) -> None:
     config = REPO / ".env"
     if not config.exists():
-        with config.open("x") as handle:
+        with config.open("x", encoding="utf-8") as handle:
             config.chmod(0o600)
-            handle.write((REPO / ".env.example").read_text())
+            handle.write((REPO / ".env.example").read_text(encoding="utf-8"))
     for name in ("checks", "archive"):
         (REPO / "runs" / name).mkdir(parents=True, exist_ok=True)
     # The launcher creates its workspace only after checking for unmigrated data.
     root = REPO.parent
-    for name in ("Start Qumus.command", "Stop Qumus.command"):
+    for name in launcher_names():
         launcher = root / name
-        source = (REPO / "scripts" / "templates" / name).read_text()
-        source = source.replace("@QUMUS_REPO@", shlex.quote(str(REPO)))
-        if not launcher.exists() or refresh_launcher or launcher.read_text() == source:
-            launcher.write_text(source)
+        # newline="": keep the template's line endings (.bat needs CRLF)
+        source = _read_exact(REPO / "scripts" / "templates" / name)
+        repo = str(REPO) if name.endswith(".bat") else shlex.quote(str(REPO))
+        source = source.replace("@QUMUS_REPO@", repo)
+        if (not launcher.exists() or refresh_launcher
+                or _read_exact(launcher) == source):
+            launcher.write_text(source, encoding="utf-8", newline="")
             launcher.chmod(0o755)
         else:
             print(f"Kept existing {name}. Use --refresh-launcher to regenerate it from this repository.")
@@ -81,12 +102,13 @@ def main() -> None:
     if args.local_only and (args.with_v1 or args.ui_tests):
         parser.error("--local-only cannot be combined with package installation options")
     if not args.local_only:
-        extras = "dev,agents,v1compare" + (",ui-test" if args.ui_tests else "")
+        extras = "dev,agents,vision,design" + (",ui-test" if args.ui_tests else "")
         install_environment(".venv", extras)
         if args.with_v1:
             install_environment(".venv-v1compare", "dev,v1compare,v1agents")
         if args.ui_tests:
-            subprocess.run([str(REPO / ".venv/bin/python"), "-m", "playwright", "install", "chromium"], check=True)
+            subprocess.run([str(venv_python(REPO / ".venv")), "-m", "playwright", "install", "chromium"],
+                           check=True)
     prepare_local_files(refresh_launcher=args.refresh_launcher)
 
 

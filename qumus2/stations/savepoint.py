@@ -132,7 +132,7 @@ def save_savepoint(services: Any, dest: str | Path, *, label: str = "",
         # the pictures that belong to this save point: a resumed lab names its new
         # pictures like the ones this run takes after the save, so only these are reused
         names = sorted(p.relative_to(images).as_posix() for p in images.rglob("*") if p.is_file())
-        (tmp / "brain" / IMAGES).write_text(json.dumps(names))
+        (tmp / "brain" / IMAGES).write_text(json.dumps(names), encoding="utf-8")
     timeline = work / TIMELINE
     if timeline.exists():
         _copy_timeline(timeline, tmp / "brain" / TIMELINE, timeline.stat().st_size, last_id)
@@ -141,7 +141,7 @@ def save_savepoint(services: Any, dest: str | Path, *, label: str = "",
             "git_commit": _git_commit(), "agents": getattr(services.runtime, "mode", None),
             "stations": services.stations.to_dict(), "lab": lab if isinstance(lab, dict) else {},
             **(extra or {})}
-    (tmp / "savepoint.json").write_text(json.dumps(meta, indent=1, default=str))
+    (tmp / "savepoint.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
     if dest.exists():
         shutil.rmtree(dest)
     tmp.rename(dest)
@@ -201,7 +201,7 @@ def find_savepoint(path: str | Path) -> Path:
     if (path / "savepoint.json").exists():
         return path
     found = sorted((p for p in (path / "savepoints").glob("sp*") if (p / "savepoint.json").exists()),
-                   key=lambda p: json.loads((p / "savepoint.json").read_text())["last_event_id"])
+                   key=lambda p: json.loads((p / "savepoint.json").read_text(encoding="utf-8"))["last_event_id"])
     if not found:
         raise FileNotFoundError(f"no save point in {path}")
     return found[-1]
@@ -238,7 +238,7 @@ def _restore_images(src: Path, dst: Path, sp: Path, saved_wall: float) -> int:
     save points without the list use the file times."""
     listed = sp / "brain" / IMAGES
     if listed.exists():
-        names = [n for n in json.loads(listed.read_text()) if (src / n).is_file()]
+        names = [n for n in json.loads(listed.read_text(encoding="utf-8")) if (src / n).is_file()]
     else:
         names = [p.relative_to(src).as_posix() for p in src.rglob("*")
                  if p.is_file() and p.stat().st_mtime <= saved_wall]
@@ -256,7 +256,7 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
     `qumus_simlab serve --resume`) and `photo_root` (the original brain run
     folder; pass it to export_recording as an extra root)."""
     sp = find_savepoint(savepoint).resolve()
-    meta = json.loads((sp / "savepoint.json").read_text())
+    meta = json.loads((sp / "savepoint.json").read_text(encoding="utf-8"))
     if meta.get("version") != VERSION:
         raise RuntimeError(f"save point version {meta.get('version')} is not supported")
     photo_root = Path(meta["workspace"])
@@ -280,7 +280,7 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
         _restore_images(images, db.parent / "images", sp, float(meta.get("saved_wall") or 0))
     resumed = {"savepoint": str(sp), **{k: meta.get(k) for k in (
         "workspace", "last_event_id", "saved_at", "git_commit", "label")}}
-    (db.parent / "resumed_from.json").write_text(json.dumps(resumed, indent=1))
+    (db.parent / "resumed_from.json").write_text(json.dumps(resumed, indent=1), encoding="utf-8")
     return {**meta, "resumed": resumed, "lab_dir": sp / "lab", "photo_root": photo_root}
 
 

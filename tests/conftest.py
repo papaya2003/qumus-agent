@@ -34,12 +34,12 @@ def v2_recording(name: str) -> Path:
 
 def hallbar_bench() -> dict[str, Any]:
     """The v1-linked Hall-bar bench as qumus-simlab describes it (GET /api/sim/layout)."""
-    return json.loads((FIXTURES / "hallbar_bench.json").read_text())
+    return json.loads((FIXTURES / "hallbar_bench.json").read_text(encoding="utf-8"))
 
 
 def hallbar_samples() -> list[dict[str, Any]]:
     """The Hall-bar laboratory's starting inventory (seed 3)."""
-    return json.loads((FIXTURES / "hallbar_samples.json").read_text())
+    return json.loads((FIXTURES / "hallbar_samples.json").read_text(encoding="utf-8"))
 
 
 def _png() -> bytes:

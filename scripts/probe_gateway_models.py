@@ -36,7 +36,7 @@ def prices(model: str) -> tuple[float, float]:
     if model in PRICE_OVERRIDE:
         return PRICE_OVERRIDE[model]
     table = yaml.safe_load((Path(__file__).resolve().parents[1] / "qumus2/config/"
-                            "model_context_limits.yaml").read_text())["quoted_prices_usd_per_million"]
+                            "model_context_limits.yaml").read_text(encoding="utf-8"))["quoted_prices_usd_per_million"]
     p = table.get(model)
     if not p:
         raise SystemExit(f"no quoted price for {model}; refusing to spend without one")
@@ -204,7 +204,7 @@ def main() -> int:
         print(json.dumps(r), flush=True)
     out["total_cost_usd_est"] = round(sum(r["cost_usd_est"] for r in out["results"]), 4)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(out, indent=2))
+    Path(args.out).write_text(json.dumps(out, indent=2), encoding="utf-8")
     print("total_cost_usd_est", out["total_cost_usd_est"], flush=True)
     return 0
 

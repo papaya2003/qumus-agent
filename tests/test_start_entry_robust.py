@@ -53,7 +53,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(start_qumus, "STOP_TIMEOUT_S", 5.0)
     monkeypatch.setattr(start_qumus, "code_version", lambda: "new123")
     script = tmp_path / "fake_server.py"
-    script.write_text(FAKE_SERVER)
+    script.write_text(FAKE_SERVER, encoding="utf-8")
     opened: list[str] = []
     monkeypatch.setattr(start_qumus.webbrowser, "open", opened.append)
     yield repo, port, script, opened
@@ -116,7 +116,7 @@ def test_an_older_version_is_restarted_after_one_question(repo, capsys):
 def test_without_a_terminal_answer_the_running_server_is_kept(repo, monkeypatch):
     root, port, script, opened = repo
     pid = _start(script, port, version="old000")
-    monkeypatch.setattr(start_qumus.sys, "stdin", open(os.devnull))
+    monkeypatch.setattr(start_qumus.sys, "stdin", open(os.devnull, encoding="utf-8"))
     args = start_qumus.argparse.Namespace(restart=False, yes=False, no_browser=False)
     assert start_qumus.handle_running(start_qumus.find_server(), args) is False
     assert start_qumus.alive(pid) and opened == [f"http://127.0.0.1:{port}"]

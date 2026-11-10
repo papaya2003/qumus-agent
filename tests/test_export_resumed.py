@@ -14,8 +14,8 @@ def test_resume_chain_is_followed(tmp_path):
     a, b, c = (tmp_path / n for n in "abc")
     for f in (a, b, c):
         f.mkdir()
-    (c / "resumed_from.json").write_text(json.dumps({"workspace": str(b)}))
-    (b / "resumed_from.json").write_text(json.dumps({"workspace": str(a)}))
+    (c / "resumed_from.json").write_text(json.dumps({"workspace": str(b)}), encoding="utf-8")
+    (b / "resumed_from.json").write_text(json.dumps({"workspace": str(a)}), encoding="utf-8")
     assert earlier_workspaces(c) == (b.resolve(), a.resolve())
     assert _earlier_image_roots(c / "images") == (b.resolve() / "images", a.resolve() / "images")
     assert earlier_workspaces(a) == ()

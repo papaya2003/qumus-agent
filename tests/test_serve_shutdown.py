@@ -26,7 +26,7 @@ def test_ctrl_c_stops_serve_with_a_page_open(tmp_path):
 
     lab = make_fake_lab()
     stations = tmp_path / "stations.yaml"
-    stations.write_text("modules:\n" + "".join(f"  {m}: {{url: '{u}', kind: sim}}\n" for m, u in lab.urls.items()))
+    stations.write_text("modules:\n" + "".join(f"  {m}: {{url: '{u}', kind: sim}}\n" for m, u in lab.urls.items()), encoding="utf-8")
     port = _free_port()
     env = {k: v for k, v in os.environ.items() if not k.upper().endswith("_PROXY")}
     env.pop("QUMUS_ANTHROPIC_API_KEY", None)

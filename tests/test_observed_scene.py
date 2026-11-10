@@ -209,7 +209,7 @@ def test_projection_is_pure_and_old_bench_snapshot_excludes_future_reports(servi
     recorder.tick(force_bench=True)
     review_material(s.store, s.lab.bench, "carrier_gr_01", expected_material="Gr", by="Ada", status="confirmed")
     recorder.tick(force_bench=True)
-    frames = [json.loads(line) for line in timeline.read_text().splitlines() if '"bench"' in line]
+    frames = [json.loads(line) for line in timeline.read_text(encoding="utf-8").splitlines() if '"bench"' in line]
     old, new = [f["bench"]["twin"]["observed_scene"] for f in frames]
     assert old["through_event_id"] == prefix and not old["subjects"]
     assert new["through_event_id"] > prefix and new["subjects"]

@@ -38,7 +38,7 @@ def test_explicit_environment_stage_opt_out(isolated_credentials, monkeypatch, s
 
 def test_dotenv_opt_out_and_environment_precedence(isolated_credentials, monkeypatch, tmp_path):
     path = tmp_path / ".env"
-    path.write_text("QUMUS_OPENAI_STAGE_BUDGET_USD=unlimited\n")
+    path.write_text("QUMUS_OPENAI_STAGE_BUDGET_USD=unlimited\n", encoding="utf-8")
     assert load_openai_credentials(path).stage_budget_usd is None
     monkeypatch.setenv("QUMUS_OPENAI_STAGE_BUDGET_USD", "250")
     assert load_openai_credentials(path).stage_budget_usd == 250

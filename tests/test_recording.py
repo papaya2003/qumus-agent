@@ -54,7 +54,7 @@ def test_recorder_and_export(tmp_path, monkeypatch):
     # photos copied into media/ and every reference points there
     imgs = [i for e in rec["events"] for i in (e["payload"].get("images") or [])]
     assert imgs and all(i.startswith("media/") and (out / i).is_file() for i in imgs)
-    text = (out / "recording.json").read_text()
+    text = (out / "recording.json").read_text(encoding="utf-8")
     assert "sk-test" not in text and "/Users/someone" not in text
     assert "[redacted]" in text
     assert check_recording(out) == []
@@ -117,7 +117,7 @@ def test_replay_server(tmp_path, monkeypatch):
             assert c.get(url, headers={"if-none-match": r.headers["etag"]}).status_code == 304
     assert c.get("/api/image", params={"path": img}).headers["cache-control"] == "no-cache"
     assert [r["name"] for r in c.get("/api/recordings").json()] == ["one"]
-    assert json.loads((out / "recording.json").read_text())["meta"]["n_events"] == len(rec["events"])
+    assert json.loads((out / "recording.json").read_text(encoding="utf-8"))["meta"]["n_events"] == len(rec["events"])
 
 
 def test_the_old_replay_command_is_gone():
@@ -144,5 +144,5 @@ def test_nested_sample_photos_and_provider_metadata(tmp_path, monkeypatch):
     rec = load_recording(out)
     rec['runs']['nested-test'] = {'result': {'device': {'props': {
         'images': {'final': 'media/missing-device.png'}}}}}
-    (out / 'recording.json').write_text(json.dumps(rec))
+    (out / 'recording.json').write_text(json.dumps(rec), encoding="utf-8")
     assert any('missing-device.png' in problem for problem in check_recording(out))

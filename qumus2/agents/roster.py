@@ -63,7 +63,7 @@ def load_roster() -> dict[str, AgentSpec]:
         out[name] = AgentSpec(
             name=name,
             description=DESCRIPTIONS[name],
-            prompt=(PROMPTS / f"{name}.md").read_text(),
+            prompt=(PROMPTS / f"{name}.md").read_text(encoding="utf-8"),
             max_turns=int(a.get("max_turns", 40)),
         )
     return out

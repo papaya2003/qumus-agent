@@ -90,7 +90,7 @@ async def main() -> None:
             except Exception as exc:
                 result["error"] = scrub_text(str(exc), [creds.api_key])
             report.append(result)
-            (folder / "report.json").write_text(json.dumps(report, indent=2))
+            (folder / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             print(json.dumps({k: v for k, v in result.items() if k != "deltas"}), flush=True)
             await asyncio.sleep(5)
     print("Evidence:", folder / "report.json")

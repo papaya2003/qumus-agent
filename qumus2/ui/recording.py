@@ -84,7 +84,7 @@ class Recorder:
                                  "wall": round(self.wall.now(), 3), "start": True}
         if self.layout is not None:
             start["layout"] = self.layout
-        with self.path.open("a") as f:
+        with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(start, default=str) + "\n")
         # A fast scripted job may finish before the polling thread's first
         # tick. Record the initial bench now so replay never starts in its
@@ -135,7 +135,7 @@ class Recorder:
                 self._last_bench_t = now
                 self._dirty = not quiet
         if lines:
-            with self.path.open("a") as f:
+            with self.path.open("a", encoding="utf-8") as f:
                 for line in lines:
                     f.write(json.dumps(line, default=str) + "\n")
 
@@ -170,7 +170,7 @@ def read_timeline(path: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not path.exists():
         return out
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         try:
             out.append(json.loads(line))
         except json.JSONDecodeError:  # a line cut off by a crash
@@ -430,7 +430,7 @@ def export_recording(db_path: str | Path, out_dir: str | Path, *, title: str = "
         if r.search(text):
             raise RuntimeError(f"export still contains something key-like ({r.pattern}); "
                                "not written")
-    (out / "recording.json").write_text(text)
+    (out / "recording.json").write_text(text, encoding="utf-8")
     if final.exists():
         shutil.rmtree(final)
     out.rename(final)
@@ -530,7 +530,7 @@ def load_recording(path: str | Path) -> dict[str, Any]:
     p = Path(path)
     if p.is_dir():
         p = p / "recording.json"
-    rec = json.loads(p.read_text())
+    rec = json.loads(p.read_text(encoding="utf-8"))
     if rec.get("format") != FORMAT:
         raise ValueError(f"{p} is not a Qumus recording")
     return rec

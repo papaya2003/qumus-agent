@@ -58,7 +58,7 @@ def earlier_workspaces(folder: Path | None) -> tuple[Path, ...]:
     while folder is not None and folder not in seen and len(out) < 50:
         seen.add(folder)
         try:
-            workspace = json.loads((folder / "resumed_from.json").read_text()).get("workspace")
+            workspace = json.loads((folder / "resumed_from.json").read_text(encoding="utf-8")).get("workspace")
         except (OSError, ValueError, AttributeError):
             break
         if not workspace:

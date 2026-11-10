@@ -22,6 +22,7 @@ This is the brain of the Qumus agent system. Start with the
 
 | Read | Purpose |
 | --- | --- |
+| [Reactor in its own words](reactor-native.md) | Brain reactor tools over the reactor's Lab Console (2026-11-10) |
 | [Reactor gaps](reactor-gaps.md) | What still blocks the real reactor station |
 | [Reactor model](reactor-model.md) | The simulated apparatus (now in qumus-simlab) and workflow limits |
 | [Owner-review workflow contract](reactor-owner-review-20261027.md) | The material-metal workflow contract |

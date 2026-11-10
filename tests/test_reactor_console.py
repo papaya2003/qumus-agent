@@ -127,3 +127,83 @@ def test_cli_probe(fake, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["reachable"] is True
     assert fake.posts == []
+
+
+# --------------------------------------------------------------- recipe runs
+def test_recipe_runs_borrow_the_sessions_devices(fake):
+    fake.slots["A1"] = "chip-7"
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    result = console.run_recipe("crucible-load", {"from_slot": "A1"})
+    assert result.ok and result.status == "completed"
+    assert fake.crucible == "chip-7" and fake.slots["A1"] is None
+    assert {d for d, h in fake.holders.items() if h == "agent-qumus"} == {"robot", "stage", "furnace"}
+    paths = [p for p, _, _ in fake.posts]
+    assert paths.index("api/heartbeat") < paths.index("api/runs") < paths.index("api/release")
+    run_post = next(b for p, _, b in fake.posts if p == "api/runs")
+    assert run_post == {"recipe": "crucible-load", "params": {"from_slot": "A1"}, "borrow": True}
+    assert fake.orchestrator_holder is None  # orchestrator lease released at the end
+
+
+def test_slot_state_result_is_the_last_step(fake):
+    fake.slots["A2"] = "chip-1"
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    assert console.run_recipe("slot-state", {"slot": "A2"}).result["state"] == "present"
+    assert console.run_recipe("slot-state", {"slot": "A3"}).result["state"] == "empty"
+
+
+def test_failed_recipe_reports_the_detail(fake):
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    result = console.run_recipe("crucible-load", {"from_slot": "A1"})  # slot empty
+    assert result.outcome == "failed" and result.status == "aborted"
+    assert "No chip" in result.message
+    assert result.steps[0]["error"]
+
+
+def test_held_recipe_is_aborted(fake):
+    fake.hold_recipe = "slot-state"
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    result = console.run_recipe("slot-state", {"slot": "A1"})
+    assert result.outcome == "failed" and result.status == "aborted"
+    assert any(p.endswith("/abort") for p, _, _ in fake.posts)
+
+
+def test_moving_recipes_are_refused_without_actuation(fake):
+    console = ReactorConsole(fake.base_url)
+    for recipe in ("crucible-load", "crucible-unload", "slot-state", "microscope-record"):
+        with pytest.raises(ReactorPolicyError):
+            console.run_recipe(recipe, {})
+    assert fake.posts == []
+
+
+def test_unknown_recipe_is_refused_before_sending(fake):
+    with pytest.raises(ValueError):
+        ReactorConsole(fake.base_url, allow_actuation=True).run_recipe("tray-transfer", {})
+    assert fake.posts == []
+
+
+def test_recipe_refused_when_another_page_holds_a_device(fake):
+    fake.holders["robot"] = "page-owner"
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    result = console.run_recipe("crucible-load", {"from_slot": "A1"})
+    assert result.outcome == "refused" and "another" in result.message.lower()
+    assert "api/runs" not in [p for p, _, _ in fake.posts]
+
+
+def test_furnace_sequence_and_stop_all(fake):
+    console = ReactorConsole(fake.base_url, allow_actuation=True, sleep=lambda s: None)
+    console.take("furnace")
+    steps = [{"temperature_c": 300, "ramp_rate_c_per_min": 20, "hold_minutes": 1}]
+    assert console.command("furnace", "start_sequence", {"steps": steps}).outcome == "ok"
+    state = console.furnace_wait(timeout_s=10)
+    assert state["sequence"]["running"] is False and state["sequence"]["phase"] == "complete"
+    results = console.stop_all()
+    assert results["furnace"] == "confirmed" and results["console"] == "accepted"
+    assert {"robot", "stage", "microscope", "furnace"} <= set(fake.stops)
+
+
+def test_microscope_frame_from_the_sim_base(fake):
+    from qumus2.reactor.console_fake import FAKE_JPEG
+
+    assert ReactorConsole(fake.base_url).microscope_frame() == FAKE_JPEG
+    with pytest.raises(TransportError):
+        ReactorConsole(fake.base_url, timeout_s=0.5).microscope_frame("http://127.0.0.1:9/")

@@ -29,16 +29,16 @@ DESCRIPTIONS = {
     "eyes": "Lab manager. Checks inventory, instrument status and the bench through the "
             "overview camera. Read-only: cannot move anything.",
     "hands": "Processing. Runs hardware flows (exfoliation, chip search, stacking, placing "
-             "chips) through job tools and handles their results. Dedicated reactor "
-             "operations belong to Reactor.",
+             "chips) through job tools and handles their results. Reactor operations "
+             "belong to Reactor.",
     "picker": "Flake selection. Looks at microscope images of candidate flakes and submits a "
               "selection that code validates.",
     "designer": "Device designer. Produces a device layout for the selected flakes and "
                 "submits it for an independent code check.",
-    "reactor": "Experimental vdW reactor specialist. Receives Hands-prepared carriers after Picker confirmation, "
-               "observes local two-flake reactions and adjusts temperature, gas flow and carrier "
-               "position through checked jobs, and refreshes stored-carrier cold-state evidence "
-               "with verify_reactor_state. Available only on an enabled virtual reactor.",
+    "reactor": "vdW reactor specialist. Drives the reactor in its own vocabulary: person "
+               "handover into a tray slot, crucible load and unload, temperature programs with "
+               "gas, microscope pictures, stop. Available when stations.yaml has a reactor "
+               "Lab Console station.",
 }
 
 UI_LABELS = {  # display names (the UI is in English for the whole lab)

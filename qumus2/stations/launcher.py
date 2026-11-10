@@ -45,7 +45,15 @@ class SimLabProcess:
             p.wait(timeout=timeout_s)
 
 
-def _answers(url: str) -> bool:
+def _answers(url: str, adapter: str = "contract") -> bool:
+    if adapter == "console":  # reactor Lab Console: a GET of its state, nothing else
+        from qumus2.reactor.console import ReactorConsole
+
+        try:
+            ReactorConsole(url, timeout_s=1.0).overview()
+            return True
+        except (ContractError, ValueError):
+            return False
     try:
         ContractClient(url, "qumus-agent-probe", timeout_s=1.0).describe()
         return True
@@ -67,7 +75,8 @@ def _is_local(url: str) -> bool:
 
 
 def sim_offline(stations: Stations) -> list[str]:
-    return [m for m, s in stations.modules.items() if s.kind == "sim" and not _answers(s.url)]
+    return [m for m, s in stations.modules.items()
+            if s.kind == "sim" and not _answers(s.url, s.adapter)]
 
 
 def simlab_python(simlab_dir: Path) -> str:
@@ -126,4 +135,4 @@ def ensure_simlab(stations: Stations, *, seed: int | None = None, data_dir: str 
 
 def describe_stations(stations: Stations) -> list[dict[str, Any]]:
     """Online/offline and sim/real of every station (the page's lab panel)."""
-    return [{**s.to_dict(), "online": _answers(s.url)} for s in stations.modules.values()]
+    return [{**s.to_dict(), "online": _answers(s.url, s.adapter)} for s in stations.modules.values()]

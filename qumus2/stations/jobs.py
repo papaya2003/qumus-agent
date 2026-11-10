@@ -50,6 +50,8 @@ class ContractJobService:
         self.command_timeout_s = command_timeout_s
         self.run_appear_s = run_appear_s
         self._keepers: dict[str, LeaseKeeper] = {}
+        #: stops of stations outside contract v1 (the reactor Lab Console): name -> callable
+        self.extra_stops: dict[str, Callable[[], Any]] = {}
 
     def learn(self) -> None:
         """Read each station's job list (describe) into the catalogue; skip offline ones."""
@@ -174,6 +176,15 @@ class ContractJobService:
                 client.stop(wait_s=1.0)
             except ContractError as e:
                 errors.append(f"{module}: {e}")
+        for module, stop in self.extra_stops.items():
+            try:
+                results = stop() or {}
+            except Exception as e:  # noqa: BLE001 - a stop must reach every station
+                errors.append(f"{module}: {e}")
+                continue
+            bad = {k: v for k, v in results.items() if v not in ("confirmed", "pending", "accepted")}
+            if bad:
+                errors.append(f"{module}: {bad}")
         if errors:
             raise ConnectionError("stop not confirmed by every module: " + "; ".join(errors))
 

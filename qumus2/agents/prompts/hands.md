@@ -89,30 +89,14 @@ an optional known stamp_id. For a device_design_target Hall-bar chip, the accept
 device_design_v1 KLayout artifact supplies the exact placements and rotations.
 Use its hBN-first then Gr order and a PC stamp. The job checks complete hBN
 coverage and all eight electrode overlaps from the final microscope evidence;
-design intent alone is not success. Do not substitute the sole-Gr legacy route
-or a material-metal reaction. For material-metal tasks the tool routes to the existing
-`prepare_material_metal` job operation, preserving its task receipt, guarded Arm2/Arm3
-handover, recovery and storage checks. Do not call an experiment-specific preparation
-tool or expose individual unguarded device helpers. Wait on the returned job before
+design intent alone is not success. Do not substitute the sole-Gr legacy route.
+Do not expose individual unguarded device helpers. Wait on the returned job before
 claiming completion; a failed release retains its evidence and reservations.
 
 Search saves detail, context and measured outline evidence. Only revisit candidates
 when Picker identifies an evidence gap. search_chip(revisit_only=true, flake_ids=...)
-obtains missing detail; assess_reactor_inputs obtains targeted neighbourhood evidence.
+obtains missing detail.
 Do not routinely reload every source after a successful full search. The first hBN
 must cover every lifted material; physical pickup rechecks the observed geometry.
-The predeposited metal is fixed on the destination and is not a picked-up layer.
-Before release the workflow observes the target metal region; its geometry is never
-inferred from the operator's coating label or the carrier dimensions.
 
-For legacy material-metal tasks, PC/mica is a known stamp property. Use matching experience and retain the source of
-any settings. Shared transfer uses the configured simulation profile for mica;
-those values do not establish physical release calibration. Do not add bottom hBN,
-leave mica in the final stack or substitute PC washing for mica. The normal workflow
-is guarded device simulation; the historical abstract fixture is not an alternative
-completion path. Report simulation scope and unknown real chemistry honestly.
-
-For material-metal preparation the Plan operation is `prepare_material_metal`, while
-the callable tool is stack_device. Successful preparation leaves the carrier
-material_metal_prepared in reactor storage and sources stacked on it. Reactor work
-is separate. Retain the exact job ID for checked recovery and result verification.
+Reactor work (person handover, loading, heating) belongs to Reactor.

@@ -1,4 +1,4 @@
-"""The agent's side of the laboratory: a JobService over contract v1 stations.
+"""The agent's side of the laboratory: a JobService over contract 2 or contract v1 stations.
 
 The agent tools keep calling `ctx.jobs.submit(flow, params)`, `wait`, `status`,
 `cancel`, ... (runtime/jobs.py JobService). `ContractJobService` has the same
@@ -10,9 +10,10 @@ methods, but every call that changes the lab is a module command:
     cancel / retry / ...  -> job_cancel / job_retry / ... on the run's module
     stop_all()            -> POST /api/stop on every module (no lease needed)
 
-It holds each module's control lease with the client's LeaseKeeper from the
-first command until `close()`, so a dead brain stops the lab's motion within
-the 3 s lease. Run progress (status, steps, results) is read from the brain's
+Each module is reached through a link (stations/link.py): contract 2 through
+lab-contract's labclient when the station offers it, else contract v1. It holds
+each module's control lease (renewed in the background) from the first command
+until `close()`, so a dead brain stops the lab's motion within one lease. Run progress (status, steps, results) is read from the brain's
 own store, which the record mirror (stations/mirror.py) keeps in step with the
 station's /api/records feed.
 """
@@ -28,11 +29,11 @@ from qumus2.contract import (
     Conflict,
     ContractClient,
     ContractError,
-    LeaseKeeper,
     NotFound,
 )
 from qumus2.runtime.jobs import TERMINAL, JobStatus
 from qumus2.stations.catalog import CATALOG, FlowCatalog
+from qumus2.stations.link import StationLink, V1Link, open_link
 
 LAB_WIDE_MODULE = "stacking"  # [default] module that serves resume_all / complete_experiment
 
@@ -42,22 +43,27 @@ class ContractJobService:
                  mirror: Any = None, catalog: FlowCatalog | None = None,
                  wall: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], None] = time.sleep, poll_s: float = 0.1,
-                 command_timeout_s: float = 10.0, run_appear_s: float = 10.0) -> None:
+                 command_timeout_s: float = 10.0, run_appear_s: float = 10.0,
+                 links: dict[str, StationLink] | None = None) -> None:
+        #: v1 clients: record feed, pictures and sim pages (and commands where no link says otherwise)
         self.store, self.clients = store, clients
+        #: how each module is commanded: contract 2 or v1 (stations/link.py)
+        self.links: dict[str, StationLink] = {m: (links or {}).get(m) or V1Link(m, c)
+                                              for m, c in clients.items()}
         self.mirror = mirror
         self.catalog = catalog or CATALOG
         self.wall, self.sleep, self.poll_s = wall, sleep, poll_s
         self.command_timeout_s = command_timeout_s
         self.run_appear_s = run_appear_s
-        self._keepers: dict[str, LeaseKeeper] = {}
+        self._leased: set[str] = set()
         #: stops of stations outside contract v1 (the reactor Lab Console): name -> callable
         self.extra_stops: dict[str, Callable[[], Any]] = {}
 
     def learn(self) -> None:
         """Read each station's job list (describe) into the catalogue; skip offline ones."""
-        for module, client in self.clients.items():
+        for module, link in self.links.items():
             try:
-                self.catalog.learn(module, client.describe(refresh=True).commands)
+                self.catalog.learn(module, link.commands())
             except ContractError:
                 continue
 
@@ -78,40 +84,27 @@ class ContractJobService:
             raise KeyError(f"unknown job {run_id}")
         return self.module_of_flow(run["flow"])
 
+    def contracts(self) -> dict[str, int]:
+        """Which contract each module is commanded with."""
+        return {m: link.contract for m, link in self.links.items()}
+
     def _lease(self, module: str) -> None:
-        keeper = self._keepers.get(module)
-        if keeper is not None and keeper.active:
-            return
-        client = self.clients[module]
-        try:
-            client.heartbeat()
-        except Conflict as e:
-            raise ValueError(f"the {module} module is controlled by someone else: {e}") from e
-        self._keepers[module] = client.lease_keeper().start()
+        self.links[module].lease()
+        self._leased.add(module)
 
     def _command(self, module: str, action: str, params: dict[str, Any], *,
                  lease: bool) -> dict[str, Any]:
         """Send one synchronous module command; return its result data."""
         if lease:
             self._lease(module)
-        client = self.clients[module]
         try:
-            receipt = client.command(action, params)
-        except BadRequest as e:  # the module refused the parameters (422)
+            return self.links[module].command(action, params, timeout_s=self.command_timeout_s)
+        except BadRequest as e:  # the module refused the parameters
             raise ValueError(str(e)) from e
         except NotFound as e:
             raise KeyError(str(e)) from e
         except Conflict as e:  # busy / locked / lease
             raise ValueError(f"{module} module refused {action}: {e}") from e
-        lc = (receipt.state.raw or {}).get("last_command") or {}
-        if receipt.command_id is not None and lc.get("id") == receipt.command_id \
-                and lc.get("result") not in (None, "running"):
-            if lc.get("result") != "ok":
-                raise ValueError(f"{action} on {module}: {lc.get('result')}: {lc.get('message')}")
-            return lc.get("data") or {}
-        # not in the reply: find this command's end in the events
-        done = client.wait_for_command(receipt, timeout_s=self.command_timeout_s)
-        return dict(done.raw.get("data") or {})
 
     # -- JobService (C5) -----------------------------------------------------------
     def submit(self, flow: str, params: dict[str, Any], *, project_id: str | None = None,
@@ -171,9 +164,9 @@ class ContractJobService:
 
     def stop_all(self) -> None:
         errors = []
-        for module, client in self.clients.items():
+        for module, link in self.links.items():
             try:
-                client.stop(wait_s=1.0)
+                link.stop(wait_s=1.0)
             except ContractError as e:
                 errors.append(f"{module}: {e}")
         for module, stop in self.extra_stops.items():
@@ -224,21 +217,20 @@ class ContractJobService:
     def close(self) -> None:
         if self.mirror is not None:
             self.mirror.close()
-        for module, keeper in list(self._keepers.items()):
-            keeper.stop()
-            try:
-                self.clients[module].release()
-            except ContractError:
-                pass
-        self._keepers.clear()
+        for module in sorted(self._leased):
+            self.links[module].release()
+        self._leased.clear()
 
 
 def connect(urls: dict[str, str], store: Any, client_id: str = "qumus-agent", *,
             records_from: str | list[str] = "stacking", image_dir: Any = None, mirror_poll_s: float = 0.5,
-            start_mirror: bool = True, require_all: bool = True, **kwargs: Any) -> ContractJobService:
+            start_mirror: bool = True, require_all: bool = True,
+            options: dict[str, dict[str, Any]] | None = None, **kwargs: Any) -> ContractJobService:
     """Clients for every station, the record mirror from `records_from`, and the job service.
 
-    `require_all=False` keeps going when a station is offline (it is retried on use)."""
+    `require_all=False` keeps going when a station is offline (it is retried on use).
+    `options`: per module stations.yaml keys that choose the contract (`contract`, `entry`,
+    `service`; stations/link.py)."""
     from qumus2.stations.mirror import MirrorSet, RecordMirror
 
     clients = {m: ContractClient(url, client_id, name=m) for m, url in urls.items()}
@@ -253,7 +245,8 @@ def connect(urls: dict[str, str], store: Any, client_id: str = "qumus-agent", *,
     mirrors = [RecordMirror(store, clients[f], image_dir=image_dir, poll_s=mirror_poll_s, name=f,
                             primary=i == 0) for i, f in enumerate(feeds)]
     mirror: Any = mirrors[0] if len(mirrors) == 1 else MirrorSet(mirrors)
-    service = ContractJobService(store, clients, mirror=mirror, **kwargs)
+    links = {m: open_link(m, c, (options or {}).get(m)) for m, c in clients.items()}
+    service = ContractJobService(store, clients, mirror=mirror, links=links, **kwargs)
     service.learn()
     mirror.sync()
     if start_mirror:

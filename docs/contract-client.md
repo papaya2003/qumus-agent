@@ -1,5 +1,11 @@
 # Contract v1 client (`qumus2.contract`)
 
+> **Contract 2.** Stations that offer contract 2 (papaya2003/lab-contract `spec/contract-2.md`;
+> qumus-simlab does) are commanded through lab-contract's `labclient` instead: see
+> [Contract 2](#contract-2-stationslinkpy) below. This v1 client stays for v1-only stations and
+> for the record feed, pictures, `put_records` and the sim pages until the contract 2 records
+> profile is in.
+
 The agent talks to every lab window only through instrument service contract v1:
 the qumus-lab modules (`exfoliation`, `stacking`), the simulated lab (`qumus2/simlab`)
 and the reactor services (`qumus2/reactor`, see [reactor-gaps.md](reactor-gaps.md)).
@@ -67,3 +73,26 @@ environment proxies ignored, because the services are loopback/VPN only.
 `qumus2.contract.fake_server.FakeService` is a small in-process contract service (no devices) with knobs
 for both wire dialects, header rules, the robot's 200-reply style, lease expiry during motion, and a lost
 command reply (which locks the service). `tests/test_contract_client.py` shows its use.
+
+## Contract 2 (`stations/link.py`)
+
+The job service (`stations/jobs.py`) commands each module through a link chosen when the brain
+connects:
+
+| Link | When | Lease | Commands |
+|---|---|---|---|
+| `V2Link` | the module URL (or `entry:`) answers `GET api/station` with `contract: 2`, lists a service named like the module (or `service:`), and labclient is found | `POST/DELETE api/lease`, renewed with `renew_only` | `labclient.Service.run`: client command id, nested `params`, wait on `api/commands/<id>` |
+| `V1Link` | otherwise, or `contract: 1` on the module in stations.yaml | `ContractClient.lease_keeper()` | as above |
+
+`contract: 2` on a module makes contract 2 required: connecting fails, naming why. With the default
+`auto`, a station that offers contract 2 but cannot be used (no labclient, no such service, a
+describe that does not follow contract 2) is logged as a warning and used with v1.
+contract 2 error codes become the same exceptions as v1 (`bad_params` -> `BadRequest`,
+`busy`/`locked`/`lease_*` -> `Conflict`, `not_found` -> `NotFound`, ...), so the job service treats
+both paths alike. `ContractJobService.contracts()` says which path each module uses.
+
+labclient is not a package dependency (lab-contract is a private repository). It is found as an
+installed package, in the folder `QUMUS_LAB_CONTRACT` names, or in a `lab-contract` checkout next
+to this one (`~/Projects/Qumus/lab-contract` on the Mac). Tests: `tests/test_stations_contract2.py`
+runs the brain against `FakeLab(contract2=True)` (a labkit station) and is skipped without
+lab-contract.

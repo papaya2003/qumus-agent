@@ -5,6 +5,9 @@
 # reactor tools drive it, docs/reactor-native.md). Real reactor, through scripts/reactor_tunnel.sh:
 #   reactor: {url: "http://127.0.0.1:18772/lab/", kind: real, adapter: console, session: qumus,
 #             microscope_url: "http://127.0.0.1:18770/", allow_actuation: false}
+# Each contract module is commanded with contract 2 when its station offers it (qumus-simlab
+# does) and lab-contract's labclient is found (a lab-contract checkout beside this one), else
+# with contract v1. Force one with `contract: 1` or `contract: 2` on the module.
 simlab_dir: ../qumus-simlab        # relative to the qumus-agent checkout for this default
 records_from: stacking
 modules:

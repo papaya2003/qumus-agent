@@ -8,6 +8,11 @@ test chooses. It simulates no physics: use qumus-simlab for that.
     with FakeLab(bench=hallbar_bench, samples=seed_rows) as lab:
         services = build_services(db, stations=lab.stations())
         lab.outcomes["search_chip"] = lambda run, params: {"status": "succeeded", "result": {...}}
+
+`FakeLab(contract2=True)` also serves the commands as one contract 2 station (lab-contract's
+labkit, on its own port; needs a lab-contract checkout) and `stations()` points every module's
+`entry:` at it, so the brain commands it through labclient while the record feed, pictures and
+put_records stay on the v1 ports (as with qumus-simlab).
 """
 
 from __future__ import annotations
@@ -28,6 +33,11 @@ from qumus2.stations.config import Stations, from_urls
 CONTROLS = ("job_cancel", "job_retry", "job_reverify", "job_resume", "job_resume_all",
             "job_review_waiting", "job_status", "complete_experiment")
 OPEN_SCHEMA = {"type": "object", "properties": {}, "additionalProperties": True}
+#: contract 2 params schemas are closed: the parameters the brain's tests send
+CONTRACT2_PARAMS = ("job", "run_id", "project_id", "summary", "chip_id", "chip_ids", "material",
+                    "num_chips", "flake_ids", "target_chip_id", "failure_event_id", "reviewer",
+                    "reason", "regions", "slot", "samples", "removed_samples", "reservations",
+                    "instructions", "project")
 
 Outcome = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
 
@@ -35,7 +45,8 @@ Outcome = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
 class FakeLab:
     def __init__(self, *, bench: dict[str, Any] | None = None,
                  samples: list[dict[str, Any]] | None = None,
-                 image_root: str | Path | None = None, modules: tuple[str, ...] = ("exfoliation", "stacking", "reactor")) -> None:
+                 image_root: str | Path | None = None, modules: tuple[str, ...] = ("exfoliation", "stacking", "reactor"),
+                 contract2: bool = False) -> None:
         self.store = RunStore(":memory:")
         self.bench = bench or {"slots": {}, "cameras": {}}
         self.lab_id = uuid.uuid4().hex
@@ -70,16 +81,53 @@ class FakeLab:
             self.services[module] = svc
         for row in samples or []:
             self.put_sample(row)
+        self.station2: Any = self._contract2() if contract2 else None
+        self._server2: Any = None
+
+    def _contract2(self) -> Any:
+        """The same commands as one contract 2 station (labkit)."""
+        from qumus2.stations.link import load_labclient
+
+        if load_labclient() is None:
+            raise RuntimeError("FakeLab(contract2=True) needs lab-contract (labclient/labkit)")
+        from labkit.service import Failed, Service
+        from labkit.station import Station
+
+        station = Station("fake-lab")
+        for module, svc in self.services.items():
+            s2 = Service(module, lease_s=3.0)
+            for name, cmd in svc.commands.items():
+                job = bool((cmd.extra or {}).get("job"))
+
+                def fn(_run: Any, params: dict[str, Any], _cmd: Any = cmd) -> dict[str, Any]:
+                    try:
+                        return _cmd.run(dict(params), None) or {}
+                    except (KeyError, ValueError) as e:
+                        raise Failed(str(e)) from e
+
+                s2.add(name, fn, summary=name, motion=job, job=job, lease=not cmd.any_client,
+                       deadline_s=(3600.0, 3600.0) if job else None)
+                s2.commands[name].spec["params"] = {
+                    "type": "object", "additionalProperties": False,
+                    "properties": {p: {} for p in CONTRACT2_PARAMS}}
+            station.add(s2)
+        return station
 
     # ----- lifecycle ----------------------------------------------------------
     def start(self) -> FakeLab:
         for svc in self.services.values():
             svc.start()
+        if self.station2 is not None:
+            self._server2 = self.station2.serve()
         return self
 
     def close(self) -> None:
         for svc in self.services.values():
             svc.close()
+        if self._server2 is not None:
+            self._server2.shutdown()
+            self._server2.server_close()
+            self.station2.close()
 
     def __enter__(self) -> FakeLab:
         return self.start()
@@ -91,8 +139,16 @@ class FakeLab:
     def urls(self) -> dict[str, str]:
         return {m: svc.base_url for m, svc in self.services.items()}
 
+    @property
+    def entry(self) -> str | None:
+        """The contract 2 station entry (contract2=True, after start())."""
+        if self._server2 is None:
+            return None
+        return f"http://127.0.0.1:{self._server2.server_address[1]}/"
+
     def stations(self, records_from: str | list[str] = "stacking") -> Stations:
-        return from_urls(self.urls, records_from=records_from)
+        extra = {m: {"entry": self.entry, "contract": "2"} for m in self.urls} if self.entry else None
+        return from_urls(self.urls, records_from=records_from, extra=extra)
 
     # ----- the change log -----------------------------------------------------
     def _log(self, table: str, key: str, row: dict[str, Any] | None) -> None:

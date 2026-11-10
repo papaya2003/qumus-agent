@@ -48,7 +48,8 @@ def _services(tmp_path, stations=None):
     work.mkdir()
     store = RunStore(work / "qumus.db")
     store.emit("notification", {"level": "info", "text": "hello"})
-    (work / "images").mkdir()
+    (work / "images" / "microscope").mkdir(parents=True)
+    (work / "images" / "microscope" / "m1.jpg").write_bytes(b"jpg")
     (work / "timeline.jsonl").write_text(json.dumps({"id": 1}) + "\n" + json.dumps({"id": 99}) + "\n")
     client = FakeClient()
     st = stations or stations_config.load(None)
@@ -73,7 +74,8 @@ def test_save_and_restore_both_halves(tmp_path):
     assert out["lab_dir"] == sp / "lab"
     restored = RunStore(tmp_path / "run2" / "qumus.db")
     assert restored.last_event_id() == s.store.last_event_id()
-    assert (tmp_path / "run2" / "images").is_symlink()
+    assert (tmp_path / "run2" / "images").is_dir() and not (tmp_path / "run2" / "images").is_symlink()
+    assert (tmp_path / "run2" / "images" / "microscope" / "m1.jpg").read_bytes() == b"jpg"
     with pytest.raises(RuntimeError):
         restore_savepoint(sp, tmp_path / "run2" / "qumus.db")
 

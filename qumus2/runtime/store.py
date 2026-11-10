@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS experience_vote (
     author TEXT, batch TEXT, note TEXT, PRIMARY KEY (experience_id, run_id)
 );
 CREATE INDEX IF NOT EXISTS event_run ON event(run_id);
+CREATE INDEX IF NOT EXISTS event_lab_id ON event(json_extract(payload_json, '$.lab_event_id'));
 """
 
 RUN_STATUSES = {"queued", "running", "waiting_human", "parked", "paused", "succeeded",
@@ -248,6 +249,41 @@ class RunStore:
 
     def set_meta(self, key: str, value: str) -> None:
         self._x("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+
+    # ----- journal references -------------------------------------------------
+    # Evidence written by the laboratory (sample props, receipts inside lab
+    # events) names lab events by the LABORATORY's event ids. A brain that
+    # mirrors a station (stations/mirror.py) re-emits those events under its own
+    # ids with `lab_event_id` in the payload, so such references resolve through
+    # `lab_event_id` and compare in lab ids. Without a mirror both are the same.
+
+    def journal_mirrored(self) -> bool:
+        return self.get_meta("mirror_records_lab_id") is not None
+
+    def journal_ref_sql(self) -> str:
+        """SQL expression of an event row's journal id (for MIN/MAX/ordering)."""
+        return "json_extract(payload_json, '$.lab_event_id')" if self.journal_mirrored() else "id"
+
+    def journal_event(self, ref: Any) -> dict[str, Any] | None:
+        """The event a laboratory record names by `ref`, as the laboratory wrote it.
+
+        Returns {"id": ref, "ts", "kind", "run_id", "agent", "payload_json"}; for
+        a mirrored event the mirror's own keys (lab_event_id, lab_ts) are left
+        out of the payload so it compares equal to the laboratory's original."""
+        if type(ref) is not int:
+            return None
+        if not self.journal_mirrored():
+            row = self._x("SELECT * FROM event WHERE id=?", (ref,)).fetchone()
+            return {k: row[k] for k in ("id", "ts", "kind", "run_id", "agent", "payload_json")} if row else None
+        row = self._x("SELECT * FROM event WHERE json_extract(payload_json, '$.lab_event_id')=? "
+                      "ORDER BY id LIMIT 1", (ref,)).fetchone()
+        if not row:
+            return None
+        payload = json.loads(row["payload_json"])
+        payload.pop("lab_event_id", None)
+        payload.pop("lab_ts", None)
+        return {"id": ref, "ts": row["ts"], "kind": row["kind"], "run_id": row["run_id"],
+                "agent": row["agent"], "payload_json": json.dumps(payload, default=str)}
 
     def sessions(self) -> list[int]:
         """Where each session (one `serve`) began: the id of the last event

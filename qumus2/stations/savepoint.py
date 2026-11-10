@@ -19,8 +19,9 @@ reads the flake candidates (`get_flake_candidates`):
 `restore_savepoint` copies the brain half into a fresh run folder; the sim lab
 half is handed to `qumus_simlab serve --resume <savepoint>/lab`. The resumed
 run calls the same tools in the same order as an unbroken run from that point.
-Pictures taken before the save stay in the original folders (records point at
-them), so keep the original run folders while a resumed run is in use.
+Pictures taken before the save are hard-linked into the resumed run folder
+(records may point at the original folder, so keep it while a resumed run is
+in use); pictures taken after the resume go only into the new folder.
 
 Only for simulated stations on this computer: a real station cannot be saved
 and restored, and the sim lab writes its half into a folder on its own disk.
@@ -29,6 +30,7 @@ and restored, and the sim lab writes its half into a folder on its own disk.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -211,6 +213,13 @@ def _copy_timeline(src: Path, dst: Path, size: int, last_id: int) -> None:
                 out.write(line if line.endswith(b"\n") else line + b"\n")
 
 
+def _link_or_copy(src: str, dst: str) -> None:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+
+
 def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, Any]:
     """Copy the brain half into the fresh run folder of `db_path`.
 
@@ -239,8 +248,9 @@ def restore_savepoint(savepoint: str | Path, db_path: str | Path) -> dict[str, A
         shutil.copytree(targets, db.parent / "targets", symlinks=False)
     images = photo_root / "images"
     if images.is_dir() and not (db.parent / "images").exists():
-        # mirrored pictures: records point at them by path; a link keeps both runs consistent
-        (db.parent / "images").symlink_to(images, target_is_directory=True)
+        # mirrored pictures taken before the save: hard links (copies across disks), so the
+        # resumed run writes its NEW pictures into its own folder, never the original's
+        shutil.copytree(images, db.parent / "images", symlinks=False, copy_function=_link_or_copy)
     resumed = {"savepoint": str(sp), **{k: meta.get(k) for k in (
         "workspace", "last_event_id", "saved_at", "git_commit", "label")}}
     (db.parent / "resumed_from.json").write_text(json.dumps(resumed, indent=1))

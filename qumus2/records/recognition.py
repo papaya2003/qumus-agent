@@ -1,6 +1,7 @@
 """Read original RGB and paired mask evidence without changing its geometry."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import math
@@ -12,6 +13,17 @@ from PIL import Image
 from qumus2.core.run_paths import resolve_run_path
 
 
+def _journal_event(store, ref):
+    """A laboratory-named event (RunStore.journal_event; plain id lookup for bare stores)."""
+    if hasattr(store, "journal_event"):
+        return store.journal_event(ref)
+    return store._x("SELECT * FROM event WHERE id=?", (ref,)).fetchone()
+
+
+def _journal_ref_sql(store) -> str:
+    return store.journal_ref_sql() if hasattr(store, "journal_ref_sql") else "id"
+
+
 def validate_native_anchor_event(store, event_id):
     """Join native anchor evidence to original journal events; no physical admission."""
     from qumus2.perception.observations import native100_source_anchor, register_rgb_measurements
@@ -19,7 +31,7 @@ def validate_native_anchor_event(store, event_id):
     def event(identifier, kind, *, run_id=None, before=None):
         if type(identifier) is not int or identifier <= 0 or before is not None and identifier >= before:
             raise ValueError("Native anchor event order is invalid")
-        row = store._x("SELECT id,run_id,kind,payload_json FROM event WHERE id=?", (identifier,)).fetchone()
+        row = _journal_event(store, identifier)
         if not row or row["kind"] != kind or run_id is not None and row["run_id"] != run_id:
             raise ValueError("Native anchor event is missing or belongs to another job")
         return {"id": row["id"], "run_id": row["run_id"], "kind": row["kind"],
@@ -62,10 +74,9 @@ def native_source_observation(store, event_id):
     from qumus2.perception.measurement import owner_error_budget_policy
 
     anchor = validate_native_anchor_event(store, event_id)
-    row = store._x("SELECT run_id,payload_json FROM event WHERE id=?", (event_id,)).fetchone()
+    row = _journal_event(store, event_id)
     body = json.loads(row["payload_json"])
-    measured = store._x("SELECT payload_json FROM event WHERE id=?",
-                        (body["measurement_event_100x"],)).fetchone()
+    measured = _journal_event(store, body["measurement_event_100x"])
     receipt = json.loads(measured["payload_json"])["measurement"]
     policy = owner_error_budget_policy()
     return {"source": "rgb_native100_measured_region", "units": "mm", "frame": anchor["frame"],
@@ -88,10 +99,10 @@ def validate_native_source_observation(store, flake, observation):
     validate_owner_error_budget(observation)
     identifier = observation.get("native_source_anchor_event_id")
     expected = native_source_observation(store, identifier)
-    row = store._x("SELECT run_id,payload_json FROM event WHERE id=?", (identifier,)).fetchone()
+    row = _journal_event(store, identifier)
     payload = json.loads(row["payload_json"])
     run = store.get_run(row["run_id"])
-    completion = store._x("SELECT MIN(id) AS id FROM event WHERE run_id=? AND kind='job.status' "
+    completion = store._x(f"SELECT MIN({_journal_ref_sql(store)}) AS id FROM event WHERE run_id=? AND kind='job.status' "
         "AND json_extract(payload_json,'$.status')='succeeded'", (row["run_id"],)).fetchone()
     if (observation != expected or store.bench != "sim" or not run
             or run["flow"] not in ("search_chip", "revisit_chip") or run["status"] != "succeeded"
@@ -136,6 +147,25 @@ def _needs_boundary_qualification(observation):
         or chain.get("material_policy", {}).get("capture_profile") is not None)
 
 
+#: packages that carry the same v1 RGB recognition files; the laboratory's copy is
+#: qumus-simlab (package qumus_simlab), identical except for its import lines.
+#: (Kept here: editing perception/rgb_material.py would change the hash itself.)
+RECOGNITION_PACKAGES = ("qumus2", "qumus_simlab")
+
+
+@functools.lru_cache(maxsize=1)
+def known_algorithm_sha256s() -> frozenset[str]:
+    """perception.rgb_material.algorithm_sha256 as each package's copy computes it."""
+    from pathlib import Path
+
+    import qumus2.perception.rgb_material as rgb
+
+    files = [Path(rgb.__file__).with_name(name).read_bytes() for name in
+             ("_v1_rgb_core.py", "_v1_rgb_materials.py", "_v1_rgb_revisit.py", "rgb_material.py")]
+    return frozenset(hashlib.sha256(b"".join(f.replace(b"qumus2.", p.encode() + b".") for f in files)).hexdigest()
+                     for p in RECOGNITION_PACKAGES)
+
+
 def _validate_rgb_geometry_budget(observation):
     """The owner accepts original20 pixels, not a calibrated boundary claim."""
     if "owner_error_budget" not in observation:
@@ -144,7 +174,6 @@ def _validate_rgb_geometry_budget(observation):
         return
     from qumus2.core.optical_profiles import V1_MATERIAL_CAPTURE_PROFILE
     from qumus2.perception.measurement import validate_owner_error_budget
-    from qumus2.perception.rgb_material import algorithm_sha256
 
     validate_owner_error_budget(observation)
     chain = observation["recognition_chain"]
@@ -154,7 +183,7 @@ def _validate_rgb_geometry_budget(observation):
             or observation.get("boundary_uncertainty_provenance") != observation["owner_error_budget"]
             or chain["image"]["objective"] != 20
             or chain["calibration"].get("material_capture_profile") != V1_MATERIAL_CAPTURE_PROFILE
-            or chain["algorithm_sha256"] != algorithm_sha256()):
+            or chain["algorithm_sha256"] not in known_algorithm_sha256s()):
         raise ValueError("Owner original20 geometry policy or current recognition domain differs")
 
 
@@ -302,8 +331,8 @@ def validate_rgb_capture_binding(store, flake: dict, observation: dict) -> None:
         run = store.get_run(observation["job_id"])
         if not run or run["flow"] not in ("search_chip", "revisit_chip") or run["status"] != "succeeded":
             raise ValueError("RGB source evidence requires a completed search or revisit")
-        event = store._x("SELECT * FROM event WHERE id=?", (event_id,)).fetchone()
-        completion = store._x("SELECT MIN(id) AS id FROM event WHERE run_id=? AND kind='job.status' "
+        event = _journal_event(store, event_id)
+        completion = store._x(f"SELECT MIN({_journal_ref_sql(store)}) AS id FROM event WHERE run_id=? AND kind='job.status' "
                               "AND json_extract(payload_json,'$.status')='succeeded'",
                               (observation["job_id"],)).fetchone()
         if (not event or event["kind"] != "microscope.rgb_recognition"
@@ -329,7 +358,7 @@ def validate_rgb_capture_binding(store, flake: dict, observation: dict) -> None:
             linked_id = receipt[key]
             if type(linked_id) is not int or not 0 < linked_id < event_id:
                 raise ValueError("Original RGB capture/rotation link is absent or out of order")
-            row = store._x("SELECT * FROM event WHERE id=?", (linked_id,)).fetchone()
+            row = _journal_event(store, linked_id)
             if not row or row["kind"] != kind or row["run_id"] != observation["job_id"]:
                 raise ValueError("Original RGB capture/rotation event belongs to another operation")
             linked[key] = json.loads(row["payload_json"])
@@ -344,7 +373,7 @@ def validate_rgb_capture_binding(store, flake: dict, observation: dict) -> None:
 
             anchor = observation["source_anchor20"]
             identifier = anchor["stage_readback_event_id"]
-            readback = store._x("SELECT kind,run_id,payload_json FROM event WHERE id=?", (identifier,)).fetchone()
+            readback = _journal_event(store, identifier)
             if (type(identifier) is not int or not receipt["chip_rotation_event_id"] < identifier < receipt["capture_event_id"]
                     or not readback or readback["kind"] != "microscope.source_stage_readback"
                     or readback["run_id"] != observation["job_id"]):

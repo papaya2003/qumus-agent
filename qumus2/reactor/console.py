@@ -25,6 +25,18 @@ Routes used (all relative to the console base URL):
 * ``POST api/console/stop/<device>``: stop needs no control;
 * ``POST api/dashboard/motion``: console-wide motion stop (also holds a run).
 
+Recipe runs (the reactor orchestrator, same base; reactor docs/orchestrator.en.md):
+
+* ``POST api/heartbeat`` / ``api/renew`` / ``api/release``: the caller's orchestrator lease;
+* ``POST api/runs`` ``{recipe, params, borrow: true}`` -> 202 ``{command_id}``; the run borrows
+  the devices this session holds;
+* ``GET api/state``: ``last_command`` (admission) and ``active_run`` (``run_id``, ``status``
+  running|held|completed|aborted, ``closed``, ``detail``);
+* ``GET api/runs/<id>``: the run's steps; ``POST api/runs/<id>/abort``.
+
+Microscope frames are served by the microscope service, not by the console:
+``GET <microscope base>/api/camera/microscope/frame.jpg``.
+
 Every POST carries ``X-MG400-Client: agent-<session>``; reads need no header.
 
 Qumus policy (until Jialei explicitly allows more): reads, stops and the
@@ -81,6 +93,18 @@ READ_ONLY_ACTIONS: dict[str, frozenset[str]] = {
                          "check_calibration"}),
 }
 
+#: Devices each catalog recipe uses (reactor src skill registry, 2137e7a). A recipe run
+#: borrows them, so this session must hold every one before starting it.
+RECIPE_DEVICES: dict[str, tuple[str, ...]] = {
+    "slot-state": ("robot", "vision"),
+    "crucible-load": ("robot", "stage", "furnace"),
+    "crucible-unload": ("robot", "stage", "furnace", "thermal"),
+    "microscope-record": ("microscope",),
+}
+#: Recipes allowed without allow_actuation. None yet: microscope-record moves and heats
+#: nothing, but recording waits for Jialei's OK like every recipe (action map, 11-10).
+READ_ONLY_RECIPES: frozenset[str] = frozenset()
+
 #: Command results the console reports as final (same set labctl waits for).
 FINAL_RESULTS = frozenset({"ok", "failed", "rejected", "stopped"})
 
@@ -99,6 +123,29 @@ class CommandResult:
     @property
     def ok(self) -> bool:
         return self.outcome in {"accepted", "ok"}
+
+
+@dataclass
+class RecipeResult:
+    recipe: str
+    run_id: str | None
+    outcome: str  # ok | failed | refused | timeout | unknown
+    status: str | None = None  # completed | aborted (the run's own end state)
+    message: str = ""
+    steps: list[dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return self.outcome == "ok"
+
+    @property
+    def result(self) -> Any:
+        """The last step's result (e.g. slot-state's ``{state, center_xy_mm, angle_deg}``)."""
+        return self.steps[-1].get("result") if self.steps else None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"recipe": self.recipe, "run_id": self.run_id, "outcome": self.outcome,
+                "status": self.status, "message": self.message, "steps": self.steps}
 
 
 class ReactorConsole:
@@ -178,11 +225,16 @@ class ReactorConsole:
         """Offered commands of one device: ``{"commands": {name: schema...}}``."""
         return self._get(f"api/console/describe/{self._device(device)}")
 
-    def events(self, since: int = 0, device: str | None = None) -> list[dict[str, Any]]:
+    def events(self, since_ts: float = 0.0, device: str | None = None) -> list[dict[str, Any]]:
+        """Console events newer than ``since_ts`` (unix seconds), oldest first.
+
+        The real console numbers ``seq`` per service (robot 1.., runs 1..), so
+        events are ordered and filtered by ``ts_unix``, never by ``seq``."""
         rows = self._get("api/console/events").get("events", [])
-        return [row for row in rows
+        rows = [row for row in rows
                 if (device is None or row.get("service") == device)
-                and isinstance(row.get("seq"), int) and row["seq"] > since]
+                and isinstance(row.get("ts_unix"), (int, float)) and row["ts_unix"] > since_ts]
+        return sorted(rows, key=lambda row: row["ts_unix"])
 
     def probe(self) -> dict[str, Any]:
         """Read-only connectivity report. Sends GETs only: no session, no control, no command."""
@@ -240,6 +292,37 @@ class ReactorConsole:
         for device in MOTION_DEVICES:
             results[device] = self.stop(device)
         return results
+
+    def stop_all(self) -> dict[str, str]:
+        """Everything off: the motion stop above plus the furnace stop (heat and gas off).
+        Each stop is sent once; none needs control."""
+        results = self.stop_all_motion()
+        results["furnace"] = self.stop("furnace")
+        return results
+
+    def furnace_wait(self, *, timeout_s: float, poll_s: float = 1.0) -> dict[str, Any]:
+        """Wait until the furnace sequence no longer runs (it may still be cooling with gas).
+        Returns the last furnace state; ``state["_timeout"]`` is True when time ran out."""
+        deadline = self._clock() + timeout_s
+        beat_at = self._clock() + 1.0
+        state: dict[str, Any] = {}
+        while True:
+            try:
+                state = self.device_state("furnace").get("state") or {}
+            except ContractError:
+                state = {}
+            sequence = state.get("sequence") or {}
+            if state and not sequence.get("running"):
+                return state
+            if self._clock() >= deadline:
+                return {**state, "_timeout": True}
+            if self._clock() >= beat_at:
+                beat_at = self._clock() + 1.0
+                try:
+                    self.heartbeat()
+                except ContractError:
+                    pass
+            self._sleep(poll_s)
 
     # -------------------------------------------------------------- control
     def _check(self, device: str, action: str | None) -> None:
@@ -317,6 +400,162 @@ class ReactorConsole:
                 except ContractError:
                     pass
             self._sleep(poll_s)
+
+    # -------------------------------------------------------------- recipes
+    def ensure_control(self, devices: tuple[str, ...] | list[str]) -> list[str]:
+        """Take every listed device this session does not hold yet. Returns the ones taken."""
+        mine = {item.get("device") for item in self.heartbeat()}
+        taken = []
+        for device in devices:
+            if device not in mine:
+                self.take(device)
+                taken.append(device)
+        return taken
+
+    def run_recipe(self, recipe: str, params: dict[str, Any] | None = None, *,
+                   timeout_s: float = 1800.0, poll_s: float = 0.2,
+                   abort_wait_s: float = 30.0) -> RecipeResult:
+        """Run one catalog recipe with this session's devices (borrowed control), once.
+
+        Takes the recipe's devices, holds the orchestrator lease while the run lasts
+        (renewed every second, with the console heartbeat), aborts a run that holds
+        (agents get no operator prompt) or outlives ``timeout_s``, and releases the
+        orchestrator lease at the end. The devices stay with this session.
+        """
+        devices = RECIPE_DEVICES.get(recipe)
+        if devices is None:
+            raise ValueError(f"unknown reactor recipe {recipe!r}; known: {sorted(RECIPE_DEVICES)}")
+        if not self.allow_actuation and recipe not in READ_ONLY_RECIPES:
+            raise ReactorPolicyError(
+                f"reactor recipe {recipe} refused: moves or heats hardware; needs Jialei's explicit OK")
+        params = dict(params or {})
+        try:
+            self.ensure_control(devices)
+            status, body = self._request("api/heartbeat", {})
+        except Conflict as exc:
+            return RecipeResult(recipe, None, "refused", message=str(exc))
+        except TransportError as exc:
+            return RecipeResult(recipe, None, "refused", message=str(exc))
+        if status != 200:
+            return RecipeResult(recipe, None, "refused",
+                                message=str(body.get("error") or "orchestrator lease refused"))
+        try:
+            return self._drive(recipe, params, timeout_s, poll_s, abort_wait_s)
+        finally:
+            try:
+                self._request("api/release", {})
+            except TransportError:
+                pass
+
+    def _drive(self, recipe: str, params: dict[str, Any], timeout_s: float, poll_s: float,
+               abort_wait_s: float) -> RecipeResult:
+        status, body = self._request("api/runs", {"recipe": recipe, "params": params,
+                                                  "borrow": True}, command=True)
+        if status >= 500:
+            return RecipeResult(recipe, None, "unknown",
+                                message=str(body.get("error") or "run admission unknown"))
+        if status != 202:
+            return RecipeResult(recipe, None, "refused",
+                                message=str(body.get("error") or f"run refused ({status})"))
+        command_id = body.get("command_id")
+        result = RecipeResult(recipe, None, "unknown")
+        aborted, lost = False, ""
+        deadline = self._clock() + timeout_s
+        beat_at = self._clock() + 1.0
+        while True:
+            try:
+                state = self._get("api/state")
+            except ContractError:
+                state = {}
+            last = state.get("last_command") or {}
+            active = state.get("active_run") or {}
+            if result.run_id is None and command_id is not None and last.get("id") == command_id:
+                if last.get("result") != "ok":
+                    result.outcome = "failed"
+                    result.message = str(last.get("message") or "the run did not start")
+                    return result
+                result.run_id = active.get("run_id")
+            if result.run_id is not None and active.get("run_id") == result.run_id:
+                if active.get("status") == "held" and not aborted:
+                    self._abort(result.run_id)  # no operator prompt for agents
+                    aborted = True
+                    result.message = str(active.get("detail") or "the run held; abort sent")
+                if active.get("closed") and active.get("status") in {"completed", "aborted"}:
+                    result.status = active["status"]
+                    result.outcome = "ok" if result.status == "completed" else "failed"
+                    if result.status == "aborted":
+                        result.message = str(active.get("detail") or result.message
+                                             or "the run was aborted")
+                    result.steps = self.run_steps(result.run_id)
+                    return result
+            if lost and not aborted:
+                result.outcome, result.message = "unknown", f"orchestrator lease lost: {lost}"
+                return result
+            if self._clock() >= deadline:
+                if result.run_id is not None and not aborted:
+                    self._abort(result.run_id)
+                    aborted = True
+                    deadline = self._clock() + abort_wait_s
+                    continue
+                result.outcome = "timeout"
+                result.message = f"no result within {timeout_s:g} s"
+                return result
+            if self._clock() >= beat_at:
+                beat_at = self._clock() + 1.0
+                try:
+                    renew, reply = self._request("api/renew", {})
+                    if renew != 200:
+                        lost = str(reply.get("error") or f"renew answered {renew}")
+                    self.heartbeat()
+                except ContractError as exc:
+                    lost = str(exc)
+            self._sleep(poll_s)
+
+    def _abort(self, run_id: str) -> None:
+        try:
+            self._request(f"api/runs/{urllib.parse.quote(str(run_id), safe='')}/abort", {})
+        except TransportError:
+            pass
+
+    def run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        """The recorded steps of one run: ``[{skill, status, result, error}]``."""
+        try:
+            body = self._get(f"api/runs/{urllib.parse.quote(str(run_id), safe='')}")
+        except ContractError:
+            return []
+        steps = []
+        for step in body.get("steps") or []:
+            raw = step.get("result_json")
+            try:
+                value = json.loads(raw) if isinstance(raw, str) and raw else raw
+            except ValueError:
+                value = raw
+            steps.append({"skill": step.get("skill"), "status": step.get("status"),
+                          "result": value, "error": step.get("error")})
+        return steps
+
+    def orchestrator_state(self) -> dict[str, Any]:
+        return self._get("api/state")
+
+    # ------------------------------------------------------------ microscope
+    def microscope_frame(self, microscope_url: str | None = None) -> bytes:
+        """The current microscope frame (JPEG bytes). On the real host the microscope service
+        serves it (``microscope_url``, e.g. a tunnel to 8770); the simulated console serves it
+        under its own base."""
+        base = (microscope_url or urllib.parse.urljoin(self.base_url, "sim/microscope/"))
+        url = urllib.parse.urljoin(base.rstrip("/") + "/", "api/camera/microscope/frame.jpg")
+        request = urllib.request.Request(url, headers={"Accept": "image/jpeg"}, method="GET")
+        try:
+            with self._opener.open(request, timeout=self.timeout_s) as reply:
+                status, payload = reply.status, reply.read()
+        except urllib.error.HTTPError as exc:
+            status, payload = exc.code, exc.read()
+            exc.close()
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as exc:
+            raise TransportError(f"microscope frame not reachable: {exc}", url=url) from None
+        if status != 200 or not payload:
+            raise ServerError(f"microscope frame: HTTP {status}", status=status, url=url)
+        return payload
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

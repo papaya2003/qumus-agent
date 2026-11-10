@@ -625,75 +625,6 @@ async def refine_plan(args: RefinePlanArgs, ctx: ToolContext) -> ToolResult:
         return result
 
 
-class EstablishReactorRequirementsArgs(BaseModel):
-    instruction_id: str = Field(description="Direct user instruction establishing the experiment, preserved verbatim.")
-    reactive_material: str | None = None
-    metal: str | None = None
-    advisor_event_id: int | None = Field(None, description="Optional successful Advisor response explicitly adopted as the scheme, not every suggestion.")
-
-
-def _establish_requirements(args: EstablishReactorRequirementsArgs, ctx: ToolContext, *, revision_reason: str | None = None,
-                            expected_event_id: int | None = None) -> ToolResult:
-    from qumus2.core.materials import materials_in_text, normalize_material_code
-    from qumus2.records.reactor_requirements import ReactorRequirements, requirements_record
-
-    ins = ctx.store.get_instruction(args.instruction_id)
-    if not ins or ins["source"] != "ui" or ins["kind"] not in ("message", "plan_change") or ins["project_id"] not in (None, ctx.project_id):
-        return ToolResult(status="error", summary="Cite a direct user instruction in this project.")
-    source = ins["text"]
-    advisor = None
-    if args.advisor_event_id:
-        row = ctx.store._x("SELECT * FROM event WHERE id=?", (args.advisor_event_id,)).fetchone()
-        if not row or row["agent"] != "advisor" or row["kind"] not in ("agent.done", "tool.result"):
-            return ToolResult(status="error", summary="Cite a saved Advisor response before adopting its scheme.")
-        advisor = json.loads(row["payload_json"])
-        if row["kind"] == "tool.result" and advisor.get("status") not in ("ok", "corrected"):
-            return ToolResult(status="error", summary="An unsuccessful Advisor call is not an adopted scheme.")
-        source += "\n" + json.dumps(advisor)
-    req = ReactorRequirements(reactive_material=normalize_material_code(args.reactive_material), metal=args.metal)
-    if args.reactive_material and req.reactive_material not in materials_in_text(source):
-        return ToolResult(status="error", summary="Reactive material must be explicit in the cited user request or adopted Advisor scheme.")
-    if args.metal and not re.search(r"(?<![A-Za-z])" + re.escape(args.metal) + r"(?![A-Za-z])", ins["text"], re.I):
-        return ToolResult(status="error", summary="The person must specify the metal; Advisor or Qumus cannot select it implicitly.")
-    with ctx.store._transaction():
-        previous = requirements_record(ctx.store, ctx.project_id)
-        if previous and previous["requirements"] == req.model_dump() and not revision_reason:
-            return ToolResult(status="ok", summary="Established requirements already retained.", data=previous)
-        if previous and (not revision_reason or previous["event_id"] != expected_event_id):
-            return ToolResult(status="error", summary="Ordinary planning cannot change established requirements. Use an explicit cited goal revision.", data=previous)
-        if previous:
-            user_event = ctx.store._x("SELECT id FROM event WHERE kind='user.message' AND "
-                "json_extract(payload_json,'$.instruction_id')=?", (args.instruction_id,)).fetchone()
-            if not user_event or user_event["id"] <= previous["event_id"] or args.advisor_event_id:
-                return ToolResult(status="error", summary="A goal revision requires a later direct user instruction, not a planning retry or Advisor suggestion.")
-        payload = {"project_id": ctx.project_id, "requirements": req.model_dump(), "instruction_id": args.instruction_id,
-                   "original_request": ins["text"], "adopted_advisor_event_id": args.advisor_event_id,
-                   "adopted_advisor_response": advisor, "revision_reason": revision_reason,
-                   "previous_event_id": previous["event_id"] if previous else None}
-        ctx.store.emit("experiment.requirements", payload, agent=ctx.agent)
-        ctx.store.update_project_state(ctx.project_id, reactor_result=None, reactor_goal=None, reactor_workflow_result=None, reactor_simulation_result=None)
-        return ToolResult(status="ok", summary="Experiment requirements saved independently of the Task Plan.",
-                          data=requirements_record(ctx.store, ctx.project_id))
-
-
-@qumus_tool("establish_reactor_requirements", "Adopt and preserve the original user experiment and explicit Advisor scheme before editing execution steps. "
-            "Specify only user-chosen reactive material/metal; unknown values stay null. hBN remains topmost and nonreactive.",
-            agents={"orchestrator"}, kind="state")
-async def establish_reactor_requirements(args: EstablishReactorRequirementsArgs, ctx: ToolContext) -> ToolResult:
-    return _establish_requirements(args, ctx)
-
-
-class ReviseReactorRequirementsArgs(EstablishReactorRequirementsArgs):
-    expected_event_id: int
-    revision_reason: str = Field(min_length=1)
-
-
-@qumus_tool("revise_reactor_requirements", "Explicit experiment revision using a later direct user instruction and reason; never use for a failed plan submission. "
-            "Prior requirements and original requests remain in the audit history.", agents={"orchestrator"}, kind="state")
-async def revise_reactor_requirements(args: ReviseReactorRequirementsArgs, ctx: ToolContext) -> ToolResult:
-    return _establish_requirements(args, ctx, revision_reason=args.revision_reason, expected_event_id=args.expected_event_id)
-
-
 class StampSupportArgs(BaseModel):
     stamp_id: str
     film_type: Literal["PC", "mica"]
@@ -712,46 +643,6 @@ async def record_stamp_support(args: StampSupportArgs, ctx: ToolContext) -> Tool
     except FilmReportError as exc:
         return ToolResult(status="error", summary=str(exc))
     return ToolResult(status="ok", summary=f"Known {args.film_type} contact film recorded on {args.stamp_id}.", data=result)
-
-
-class MetalCoatingArgs(BaseModel):
-    chip_id: str
-    metal: str
-    thickness_nm: float = Field(gt=0, allow_inf_nan=False, description="Operator-reported deposited thickness in nanometres")
-    preparation_id: str | None = None
-    prepared_by: str | None = None
-    instruction_id: str
-
-
-@qumus_tool("record_metal_coating", "Record the person's predeposited metal on a silicon reactor chip in storage. "
-            "The person supplies metal and thickness_nm; geometry requires microscope evidence. No deposition is performed.",
-            agents={"orchestrator"}, kind="state", refs={"chip_id": "chip"})
-async def record_metal_coating(args: MetalCoatingArgs, ctx: ToolContext) -> ToolResult:
-    from qumus2.core.bench import slot_station
-
-    ins = ctx.store.get_instruction(args.instruction_id)
-    chip = ctx.store.get_sample(args.chip_id)
-    if not ins or ins["source"] != "ui" or ins["project_id"] not in (None, ctx.project_id) or not all(
-            value.strip() and value in ins["text"] for value in (args.chip_id, args.metal, *filter(None, (args.preparation_id, args.prepared_by)))):
-        return ToolResult(status="error", summary="Cite the person's chip and metal report; optional preparation references must also be explicit.")
-    measurements = re.findall(r"(\d+(?:\.\d+)?)\s*(nm|nanomet(?:er|re)s?|纳米|um|µm|μm|微米)(?![A-Za-z])", ins["text"], re.I)
-    if not any(abs(float(value) * (1000 if unit.lower() in ("um", "µm", "μm", "微米") else 1) - args.thickness_nm) < 1e-9 for value, unit in measurements):
-        return ToolResult(status="error", summary="The cited report must explicitly give the deposited thickness with units; do not infer it.")
-    if not chip or not chip["props"].get("reactor_substrate") or slot_station(ctx.extra.get("bench") or {}, chip["location"]) != "reactor_storage" or args.chip_id in ctx.store.reserved_samples():
-        return ToolResult(status="error", summary="Record an unreserved dedicated reactor chip already in reactor storage.")
-    record = {"metal": args.metal, "substrate": "silicon", "thickness_nm": args.thickness_nm,
-              "preparation_id": args.preparation_id or args.instruction_id,
-              "prepared_by": args.prepared_by or "user_report",
-              "preparation_reference_source": "operator_reference" if args.preparation_id else "instruction_receipt", "source": "operator_report", "instruction_id": args.instruction_id,
-              "ts": ctx.store.clock.now()}
-    previous = chip["props"].get("metal_coating")
-    if previous:
-        if {k: v for k, v in previous.items() if k != "ts"} == {k: v for k, v in record.items() if k != "ts"}:
-            return ToolResult(status="ok", summary="Human-prepared metal coating provenance already retained.", data=previous)
-        return ToolResult(status="error", summary="Existing coating provenance cannot be replaced implicitly; retain the original prepared sample record.")
-    ctx.store.upsert_sample(args.chip_id, "chip", props={"metal_coating": record})
-    ctx.store.emit("sample.metal_prepared", {"chip_id": args.chip_id, **record}, agent=ctx.agent)
-    return ToolResult(status="ok", summary="Human-prepared metal coating provenance saved.", data=record)
 
 
 class MaterialSourceArgs(BaseModel):

@@ -5,6 +5,9 @@ action is a command whose body is `{"action": flow, ...params, "job": {...}}`).
 Before a station answers, the brain uses the known catalogue below, copied from
 the simulated laboratory (qumus-simlab) so plans can be checked offline. A
 connected station's describe() overrides it.
+
+The reactor has no whole-job actions any more: it is a Lab Console station
+(stations.yaml `adapter: console`) driven by the tools in qumus2/reactor/tools.py.
 """
 
 from __future__ import annotations
@@ -23,18 +26,6 @@ KNOWN_FLOWS: dict[str, str] = {
     "inspect_bench": "stacking",
     "prepare_reactor_pair": "stacking",
     "prepare_material_metal": "stacking",
-    "assess_reactor_inputs": "reactor",
-    "inspect_reactor_product": "reactor",
-    "load_reactor_chip": "reactor",
-    "unload_reactor_chip": "reactor",
-    "reactor_growth": "reactor",
-    "reactor_reaction": "reactor",
-    "reactor_material_metal": "reactor",
-    "verify_reactor_state": "reactor",
-    "hold_reactor_observation": "reactor",
-    "observe_reactor": "reactor",
-    "position_reactor_slot": "reactor",
-    "shutdown_reactor": "reactor",
 }
 
 #: job controls every module serves; not jobs themselves

@@ -111,11 +111,8 @@ target_temp_c, dwell_s, num_massages, press_depth_mm, peel_speed and peel_angle_
 Identify unresolved values together. Registered simulation defaults can be used
 only with their existing unvalidated-simulation provenance; never call them a
 confirmed physical recipe. A planning retry cannot change the adopted scheme.
-For material-metal experiments preserve nonreactive top hBN, the specified 2D
-material, the specified predeposited metal and silicon substrate. Consult the
-known stamp PC/mica support property. The mica paper's hBN-based release route
-is not evidence for direct release onto an arbitrary metal; no universal release
-temperature, chemical product, extra hBN or PC-removal wash may be invented.
+Consult the known stamp PC/mica support property; no universal release
+temperature, extra hBN or PC-removal wash may be invented.
 
 Use get_lab_setup as the common instrument capability source. Reuse inventory
 already supplied; query only missing or changed fields. A stamp's PC/mica property

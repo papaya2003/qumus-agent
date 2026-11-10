@@ -4,8 +4,9 @@
     services.store / .jobs / .gateway / .runtime / .driver / .lab
 
 The brain never contains the laboratory. Every module (exfoliation, stacking,
-reactor) is a contract v1 station at the address stations.yaml gives, simulated
-(qumus-simlab) or real. `jobs` sends whole jobs to the stations, the record
+reactor) is a station at the address stations.yaml gives, simulated
+(qumus-simlab) or real: contract v1, or for the vdW reactor its own Lab Console
+API (`adapter: console`, driven by the reactor tools in qumus2/reactor/tools.py). `jobs` sends whole jobs to the stations, the record
 mirror copies the stations' runs, steps, samples and events into the brain's
 own store, and `lab` is the web page's read-only view of the stations.
 """
@@ -103,8 +104,8 @@ def build_services(db_path: str | Path = ":memory:", *,
     session_start = _last_event_id(db_path)
     store = RunStore(db_path, bench=st.bench)
     try:
-        jobs = connect(st.urls, store, client_id, records_from=list(st.feeds), image_dir=image_dir,
-                       mirror_poll_s=mirror_poll_s)
+        jobs = connect(st.contract_urls, store, client_id, records_from=list(st.feeds),
+                       image_dir=image_dir, mirror_poll_s=mirror_poll_s)
     except Exception:
         store.close()
         if simlab is not None:
@@ -116,7 +117,11 @@ def build_services(db_path: str | Path = ":memory:", *,
     lab.refresh_bench()
     projects = store.list_projects()
     project_id = projects[0]["id"] if projects else store.create_project("demo")
-    gateway = ToolGateway(default_registry(), store, jobs, project_id=project_id, bench=lab.bench)
+    consoles = console_stations(st, image_dir=image_dir)
+    for module, station in consoles.items():
+        jobs.extra_stops[module] = station.console.stop_all
+    gateway = ToolGateway(default_registry(), store, jobs, project_id=project_id, bench=lab.bench,
+                          stations=consoles)
 
     runtime: AgentRuntime
     if use_openai and oa_creds is not None:
@@ -134,6 +139,13 @@ def build_services(db_path: str | Path = ":memory:", *,
     store.begin_session(session_start)
     return Services(store, store.clock, lab, jobs, gateway, runtime, driver, project_id, st,
                     session_start, simlab)
+
+
+def console_stations(st: Stations, *, image_dir: str | Path | None = None) -> dict[str, Any]:
+    """The reactor tools' view of every `adapter: console` station (no request is sent)."""
+    from qumus2.reactor.tools import ReactorStation
+
+    return {m: ReactorStation.from_station(s, image_dir=image_dir) for m, s in st.consoles.items()}
 
 
 def _last_event_id(db_path: str | Path) -> int:

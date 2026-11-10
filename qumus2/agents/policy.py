@@ -353,7 +353,7 @@ def check_delegation(store: RunStore, project_id: str | None, to: str,
     if not proj["plan"]:
         return Decision(False, "Write the plan with update_plan first (steps and which agent "
                                "does each), then delegate the first step.", "plan_first")
-    if to in ("hands", "reactor") and not proj["state"].get("eyes_checked"):
+    if to == "hands" and not proj["state"].get("eyes_checked"):
         return Decision(False, "Before a hardware specialist moves anything, ask Eyes to look at the "
                                "bench with inspect_bench and check the inventory (what is "
                                "loaded, which chips are where). Needed once per project and "

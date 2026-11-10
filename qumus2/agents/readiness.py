@@ -24,12 +24,14 @@ def step_readiness(store: Any, project: dict, step: dict, registry: Any, task: s
     owner = step.get("owner")
     if owner not in ("hands", "reactor"):
         return errors
+    if owner == "reactor":
+        # Reactor tools (qumus2/reactor/tools.py) check the chip's place and the furnace
+        # themselves and record their own runs; no job operation or outcome declaration.
+        return errors
     if not project.get("state", {}).get("eyes_checked"):
         add("eyes_first", "Ask Eyes to inspect the bench and reconcile inventory before hardware work.")
     if owner == "hands" and (why := _advisor_first(project, task or f"{step.get('id')}: {step.get('title', '')}")):
         add("advisor_first", why)
-    if owner == "reactor" and not step.get("reactor_outcome"):
-        add("reactor_outcome_required", "Declare reactor_outcome with chip_id, disposition, explicit temperature/flow targets and rationale.")
     if owner == "hands" and not step.get("sample_outcomes"):
         add("sample_outcomes_required", "Declare sample_outcomes for known samples, including their required final storage/status.")
     known = executable_flow_names(owner, registry)

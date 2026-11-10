@@ -375,7 +375,7 @@ export function moments(events) {
     else if (e.kind === 'agent.error') m = ['fault', '!', `Agent error: ${p.error || p.type || ''}`];
     else if (e.kind === 'job.status' && ['parked', 'failed', 'waiting_human'].includes(p.status)) m = ['fault', '⏸', `Job ${String(p.status).replace('_', ' ')}: ${p.message || ''}`];
     else if (e.kind === 'job.submitted' && p.flow === 'reactor_reaction') m = ['reactor', '◉', 'Two-flake reaction started'];
-    else if (e.kind === 'job.submitted' && p.flow === 'unload_reactor_chip') m = ['fix', '↻', 'Reactor cooling and recovery started'];
+    else if (e.kind === 'job.submitted' && p.flow === 'reactor_unload') m = ['fix', '↻', 'Reactor unloading started (waits until cold)'];
     else if (e.kind === 'reactor.process') m = ['fix', '◉', `Reactor ${p.chip_id || ''}: ${p.disposition || p.phase || 'process state checked'}`];
     else if (e.kind === 'reactor.observation' && !out.some(x => x.reactorJob === e.run_id)) m = ['fix', '◉', `Reactor observation: ${p.chip_id || ''}`];
     else if (e.kind === 'sample.updated' && p.status === 'reactor_pair_prepared' && !out.some(x => x.pair === p.id)) m = ['done', '✓', `Two-flake pair prepared: ${p.id}`];

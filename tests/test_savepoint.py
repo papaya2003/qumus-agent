@@ -150,3 +150,14 @@ def test_restore_without_picture_list_uses_file_times(tmp_path):
     restore_savepoint(sp, tmp_path / "run2" / "qumus.db")
     assert (tmp_path / "run2" / "images" / "microscope" / "m1.jpg").exists()
     assert not (tmp_path / "run2" / "images" / "microscope" / "m2.jpg").exists()
+
+
+def test_mirror_maps_pictures_of_earlier_runs_back_to_image_ids(tmp_path):
+    from qumus2.stations.mirror import ImageCache
+
+    s, _ = _services(tmp_path)
+    save_savepoint(s, tmp_path / "run1" / "savepoints" / "sp01")
+    restore_savepoint(tmp_path / "run1", tmp_path / "run2" / "qumus.db")
+    cache = ImageCache(tmp_path / "run2" / "images", None)
+    old = str((tmp_path / "run1" / "images" / "microscope" / "m1.jpg").resolve())
+    assert cache.to_remote({"image": {"path": old}}) == {"image": {"path": "qumus-image:microscope/m1.jpg"}}

@@ -51,6 +51,24 @@ def _j(value: Any) -> str:
     return json.dumps(value, default=str)
 
 
+def _earlier_image_roots(root: Path | None) -> tuple[Path, ...]:
+    """<workspace>/images of each run in the resumed_from.json chain (savepoint.py)."""
+    out: list[Path] = []
+    folder = root.parent if root is not None else None
+    seen = set()
+    while folder is not None and folder not in seen and len(out) < 50:
+        seen.add(folder)
+        try:
+            workspace = json.loads((folder / "resumed_from.json").read_text()).get("workspace")
+        except (OSError, ValueError, AttributeError):
+            break
+        if not workspace:
+            break
+        folder = Path(workspace).resolve()
+        out.append(folder / "images")
+    return tuple(out)
+
+
 class ImageCache:
     """Pictures fetched from the stations, kept under the brain's image folder."""
 
@@ -58,6 +76,9 @@ class ImageCache:
         self.root = Path(root).resolve() if root is not None else None
         self.client = client
         self._lock = threading.Lock()
+        #: image folders of the runs this one was resumed from (records restored from
+        #: a save point keep their absolute paths); mapped back like the own folder
+        self.earlier_roots = _earlier_image_roots(self.root)
 
     def local_path(self, image_id: str) -> Path | None:
         if self.root is None:
@@ -107,8 +128,11 @@ class ImageCache:
         if isinstance(value, str):
             try:
                 p = Path(value)
-                if p.is_absolute() and p.resolve().is_relative_to(self.root):
-                    return IMAGE_PREFIX + p.resolve().relative_to(self.root).as_posix()
+                if p.is_absolute():
+                    resolved = p.resolve()
+                    for root in (self.root, *self.earlier_roots):
+                        if resolved.is_relative_to(root):
+                            return IMAGE_PREFIX + resolved.relative_to(root).as_posix()
             except (OSError, ValueError):
                 return value
             return value

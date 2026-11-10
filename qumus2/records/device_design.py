@@ -952,7 +952,10 @@ def _source(store, placement: FlakePlacement) -> DesignSource:
     observation = sample["props"].get("optical_geometry") or {}
     general = "region_mm" in observation
     (_pickup_region if general else _pickup_outline)(store, sample)
-    event = store._x("SELECT MAX(id) AS id FROM event WHERE run_id=? AND kind='job.status' "
+    from qumus2.records.recognition import _journal_ref_sql
+
+    # the laboratory's id when the brain mirrors a station (the lab re-checks the design)
+    event = store._x(f"SELECT MAX({_journal_ref_sql(store)}) AS id FROM event WHERE run_id=? AND kind='job.status' "
                      "AND json_extract(payload_json,'$.status')='succeeded'",
                      (observation["job_id"],)).fetchone()
     cls = RegionDesignSource if general else DesignSource

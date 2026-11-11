@@ -417,7 +417,9 @@ test('a refused selection-blocked report recovers only when the same step comple
       summary: 'all candidates have images; this is not an image problem'}, 'picker'));
     s.add(event(5, 'agent.delegation_checked', {to: 'picker', step: 's6', ok: false, status: 'pending',
       facts: ['no submit_flake_selection was accepted.']}, 'orchestrator'));
+    // stopped before its check and resumed from a save point: never checked
     s.add(event(6, 'agent.delegate', {to: 'picker', task: 's6: select flakes again', tool_use_id: 'd2'}, 'orchestrator'));
+    s.add(event(6.5, 'agent.delegate', {to: 'picker', task: 's6: select flakes after resume', tool_use_id: 'd3'}, 'orchestrator'));
     const role = variant === 'other-role' ? 'channel' : 'top_hbn';
     s.add(event(7, 'tool.call', {tool: 'submit_flake_selection', tool_use_id: 'x1',
       args: {selected_by_role: {[role]: ['chip_001_f002']}}}, 'picker'));

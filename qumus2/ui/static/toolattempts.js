@@ -87,6 +87,12 @@ export class ToolAttempts {
     }
     if (e.kind === 'agent.delegate') {
       const step = this.plan.find(s => s.id === taskStep(p.task) && s.owner === p.to);
+      // A new delegation of the same step to the same role replaces one that
+      // never got its check (e.g. the brain stopped and resumed from a save
+      // point): only the newest can still be checked or carry tool calls.
+      if (this.project && step) for (const [key, d] of [...this.delegations.entries()]) {
+        if (d.project === this.project && d.role === p.to && d.step === step.id) this.delegations.delete(key);
+      }
       if (this.project && step) this.delegations.set(p.tool_use_id || e.id,
         {event: e, project: this.project, step: step.id, role: p.to, operation: step.operation,
           contract: completionContract(step), reads: [], selections: []});

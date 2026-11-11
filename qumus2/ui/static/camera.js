@@ -1,26 +1,37 @@
-// The lab column's two camera frames and the last-check line (workbench
-// review item 6, as changed by Jialei): the overview camera and the
-// microscope are both always on screen under the bench top view, no camera
-// switch. The frame a job looks through gets a mark ("a job works here").
+// The lab column's two picture panes under the bench top view (Jialei
+// 2026-11-11: "only three pictures"): a macro camera and a microscope. Each
+// pane shows the source of the instrument that moves now ("哪个仪器在动就放哪个
+// 相机/显微镜") and keeps the last one while nothing moves; its header names
+// the source in a few words and has one Expand button.
 //
-// Live: the page asks GET /api/camera/{id}/latest for both cameras every
+//   Camera      overview_camera (the simulated lab has one macro camera; a
+//               lab with a camera per module adds it to SLOTS.camera)
+//   Microscope  microscope (transfer stage: chip search, stacking) or
+//               reactor_microscope (while a reactor job runs)
+//
+// Live: the page asks GET /api/camera/{id}/latest for every source every
 // 1.5 s (the testbench draws the current table and microscope scene).
 // Recordings display immutable previews only when their lab.frame arrives;
 // old recordings retain the newest captured microscope picture in the prefix.
-// The overview is a simple diagram
-// of saved lab state. Original overview photos stay in the conversation. The microscope's label names the
+// The overview is a simple diagram of saved lab state. Original overview
+// photos stay in the conversation. The microscope's header names the
 // objective of the photo it shows ("20× photo"), not the one turned in now.
 // The mode (live or a recording) is said once, in the title bar.
 //
-// The last check is one line: the step, how far off it was, in tolerance or
-// not. Only checks that measured a position are shown (the others are a ✓ in
-// the progress tree); "history" unfolds the measurements and every attempt.
+// The last measured check (how far off a placement was) is in the title
+// bar's sentence and the progress tree; verify() keeps it for a host element
+// with id "verify" when a page has one.
 
 import { $, h, api, fmt, imgUrl, imageSource, isMicrograph, VERDICT, stepName } from './ui.js';
 import { OverviewDiagram } from './overview.js';
 
 const CAMS = ['overview_camera', 'microscope', 'reactor_microscope'];
-const NAMES = { overview_camera: 'Overview camera', microscope: 'Microscope', reactor_microscope: 'Reactor microscope' };
+const SLOTS = [
+  { id: 'camera', title: 'Camera', sources: ['overview_camera'] },
+  { id: 'microscope', title: 'Microscope', sources: ['microscope', 'reactor_microscope'] },
+];
+const SOURCE = { overview_camera: 'Overview', microscope: 'Transfer stage', reactor_microscope: 'Reactor' };
+const EXPAND_ICON = '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>';
 
 export class CameraCard {
   // openFlake(id): the flake library on that flake ("Looking at chip_001 · f014")
@@ -32,20 +43,18 @@ export class CameraCard {
     this.meta = {};
     this.active = null;
     this.frames = {};
+    this.panes = {};
+    this.sel = { camera: 'overview_camera', microscope: 'microscope' };
     for (const cam of CAMS) {
       const f = {
         box: h('div', { class: 'cam', 'data-cam': cam }),
         imgs: [h('img', { alt: '', class: 'on' }), h('img', { alt: '' })],
-        // the microscope's Expand opens the whole panel larger (it keeps
-        // updating), like Top view's Expand, not just one photo (Jialei 2026-11-04)
-        tag: h('div', { class: 'ctag' }, h('b', { text: NAMES[cam] }),
-          cam === 'microscope' ? h('button', { class: 'lnk-btn expand-cam', text: 'Expand', title: 'Open a larger microscope view that keeps updating',
-            onclick: ev => { ev.stopPropagation(); this.expand(); } }) : null,
-          h('span')),
+        // what the shown picture is (objective, preview or photo): the pane header shows it
+        tag: h('span', { class: 'pane-note' }),
         cap: h('div', { class: 'cap' }),
         empty: h('div', { class: 'cam-empty' }),
       };
-      f.box.replaceChildren(...f.imgs, f.empty, f.tag, f.cap);
+      f.box.replaceChildren(...f.imgs, f.empty, f.cap);
       if (cam === 'microscope') {
         // which flake the microscope looks at, when a photo or a job step says so
         f.look = h('button', { class: 'look', hidden: true, title: 'Open this flake\'s details',
@@ -69,37 +78,66 @@ export class CameraCard {
       }
       f.box.onclick = () => {
         if (f.video && !f.video.hidden) { if (f.video.paused) f.video.play().catch(() => {}); else f.video.pause(); return; }
-        if (f.box.classList.contains('expanded')) return; const src = f.diagram?.image() || f.imgs.find(i => i.classList.contains('on'))?.dataset.src; if (src) this.lightbox(src); };
+        if (f.box.closest('.expanded')) return; const src = f.diagram?.image() || f.imgs.find(i => i.classList.contains('on'))?.dataset.src; if (src) this.lightbox(src); };
       this.frames[cam] = f;
     }
-    this.frames.reactor_microscope.box.hidden = true;
-    $('cam').replaceChildren(...CAMS.map(c => this.frames[c].box));
-    $('verify').onclick = ev => { if (ev.target.closest('.vhist')) $('verify').classList.toggle('open'); };
+    for (const slot of SLOTS) {
+      const src = h('span', { class: 'pane-src' }), notes = h('span', { class: 'pane-notes' });
+      const live = h('span', { class: 'pane-live', hidden: true, title: 'A job uses this instrument now' }, h('i'), 'moving');
+      const expand = h('button', { class: 'pane-x', title: `Open a larger ${slot.title.toLowerCase()} view that keeps updating`,
+        'aria-label': `Expand the ${slot.title.toLowerCase()}`, onclick: ev => { ev.stopPropagation(); this.expand(slot.id); } });
+      expand.innerHTML = EXPAND_ICON;
+      const body = h('div', { class: 'pane-b' }, ...slot.sources.map(c => this.frames[c].box));
+      const box = h('section', { class: 'pane cam-pane', 'data-slot': slot.id },
+        h('header', { class: 'pane-h' }, h('b', { text: slot.title }), src, notes, h('span', { class: 'grow' }), live, expand), body);
+      for (const c of slot.sources) notes.append(this.frames[c].tag);
+      this.panes[slot.id] = { slot, box, src, live, body };
+    }
+    $('cam').replaceChildren(...SLOTS.map(s => this.panes[s.id].box));
+    for (const slot of SLOTS) this.select(slot.id, this.sel[slot.id]);
+    const verify = $('verify');
+    if (verify) verify.onclick = ev => { if (ev.target.closest('.vhist')) verify.classList.toggle('open'); };
     this.reset();
     if (!replay) setInterval(() => { if (!document.hidden) this.poll(); }, 1500);
   }
 
-  // Move the microscope frame itself into the lightbox, so the enlarged view
-  // is the same live element (photos, caption, flake link); it goes back to
-  // its place in the column however the lightbox is closed or replaced.
-  expand() {
-    const f = this.frames.microscope, box = $('lightbox');
-    if (f.box.classList.contains('expanded')) return;
+  // Show one source of a pane (the others stay mounted and keep their pictures).
+  select(slotId, cam) {
+    const pane = this.panes[slotId];
+    if (!pane || !pane.slot.sources.includes(cam)) return;
+    if (cam === 'reactor_microscope' && !this.reactor) cam = 'microscope';
+    this.sel[slotId] = cam;
+    for (const c of pane.slot.sources) {
+      this.frames[c].box.hidden = c !== cam;
+      this.frames[c].tag.hidden = c !== cam;
+    }
+    pane.src.textContent = SOURCE[cam] || cam;
+    pane.box.dataset.source = cam;
+  }
+
+  // Move a whole pane into the lightbox, so the enlarged view is the same
+  // live element (pictures, header, caption, flake link, source switching);
+  // it goes back to its place in the column however the lightbox is closed.
+  expand(slotId = 'microscope') {
+    const pane = this.panes[slotId], box = $('lightbox');
+    if (!pane || pane.box.classList.contains('expanded')) return;
     const slot = h('div', { hidden: true });
-    f.box.replaceWith(slot);
-    const controls = h('div', { class: 'expanded-controls' }, h('b', { text: 'Microscope' }),
-      h('button', { class: 'lnk-btn', text: 'Close', onclick: () => { box.hidden = true; } }));
-    const figure = h('figure', { class: 'expanded-cam' }, controls, f.box,
-      h('figcaption', { text: (this.replay ? 'Recorded microscope' : 'Live microscope') + ' · Esc closes' }));
+    pane.box.replaceWith(slot);
+    const close = h('button', { class: 'pane-x pane-close', title: 'Close (Esc)', 'aria-label': 'Close the larger view', onclick: () => { box.hidden = true; } });
+    close.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    pane.box.querySelector('.pane-h').append(close);
+    const figure = h('figure', { class: 'expanded-cam' }, pane.box,
+      h('figcaption', { text: (this.replay ? 'Recorded' : 'Live') + ' · keeps updating · Esc closes' }));
     figure.onclick = ev => ev.stopPropagation();
-    f.box.classList.add('expanded');
+    pane.box.classList.add('expanded');
     box.replaceChildren(figure);
     box.hidden = false;
     const back = new MutationObserver(() => {
-      if (!box.hidden && figure.contains(f.box) && box.contains(figure)) return;
+      if (!box.hidden && figure.contains(pane.box) && box.contains(figure)) return;
       back.disconnect();
-      f.box.classList.remove('expanded');
-      slot.replaceWith(f.box);
+      pane.box.classList.remove('expanded');
+      close.remove();
+      slot.replaceWith(pane.box);
       if (!box.contains(figure) || box.hidden) figure.remove();
     });
     back.observe(box, { attributes: true, attributeFilter: ['hidden'], childList: true });
@@ -107,7 +145,7 @@ export class CameraCard {
 
   setReactor(enabled) {
     this.reactor = !!enabled;
-    this.frames.reactor_microscope.box.hidden = !this.reactor;
+    if (!this.reactor && this.sel.microscope === 'reactor_microscope') this.select('microscope', 'microscope');
   }
 
   noteReactor(data) {
@@ -127,16 +165,21 @@ export class CameraCard {
     this.lab = null;
     for (const cam of CAMS) this.showEmpty(cam);
     this.caption();
-    $('verify').classList.remove('open');
-    $('verify').replaceChildren(h('div', { class: 'placeholder', text: 'No check with a measurement yet. After a placement, how far off it was shows here.' }));
+    $('verify')?.classList.remove('open');
+    $('verify')?.replaceChildren(h('div', { class: 'placeholder', text: 'No check with a measurement yet. After a placement, how far off it was shows here.' }));
   }
 
-  // what the jobs are doing decides which frame is marked (none while no job runs)
+  // What the jobs are doing decides which source each pane shows and which
+  // pane is marked "moving" (none while no job runs; the last source stays).
   context(wantMicroscope, anyRunning, wantReactor = false) {
-    const cam = !anyRunning ? null : wantReactor ? 'reactor_microscope' : (wantMicroscope ? 'microscope' : 'overview_camera');
+    const cam = !anyRunning ? null : wantReactor && this.reactor ? 'reactor_microscope' : (wantMicroscope ? 'microscope' : 'overview_camera');
     if (cam === this.active) return;
     this.active = cam;
-    for (const c of CAMS) this.frames[c].box.classList.toggle('active', c === cam);
+    if (cam === 'microscope' || cam === 'reactor_microscope') this.select('microscope', cam);
+    this.panes.microscope.live.hidden = !(cam === 'microscope' || cam === 'reactor_microscope');
+    // the macro camera sees the whole bench: something moves whenever a job runs
+    this.panes.camera.live.hidden = !anyRunning;
+    for (const s of SLOTS) this.panes[s.id].box.classList.toggle('active', !this.panes[s.id].live.hidden);
   }
   // objective: the objective the photo was taken with, when known (a flake's
   // 20x / 100x photo, or the one turned in when the photo came)
@@ -274,7 +317,8 @@ export class CameraCard {
     const a = Number(img.dataset.aspect);
     if (!a) { img.style.removeProperty('width'); img.style.removeProperty('height'); img.style.removeProperty('left');
       img.style.removeProperty('top'); img.style.removeProperty('object-fit'); return; }
-    const W = f.box.clientWidth, H = f.box.clientHeight;
+    // the picture's own area: the box minus the caption band under it
+    const W = f.box.clientWidth, H = f.box.clientHeight - (f.cap?.offsetHeight || 0);
     if (!W || !H) return;
     const w = Math.min(W, H * a), hh = w / a;
     Object.assign(img.style, { width: `${w}px`, height: `${hh}px`, left: `${(W - w) / 2}px`, top: `${(H - hh) / 2}px`, objectFit: 'fill' });
@@ -348,7 +392,7 @@ export class CameraCard {
     if (!f.diagram) {
       f.diagram = new OverviewDiagram(layout);
       f.box.append(f.diagram.root); f.box.classList.add('has-diagram');
-      f.tag.lastChild.textContent = 'simulated · saved state';
+      f.tag.textContent = 'simulated · saved state';
     }
     f.diagram.update(state); f.empty.hidden = true;
   }
@@ -373,7 +417,7 @@ export class CameraCard {
     const m = shown ? this.displayMeta[shown] || {} : {};
     const obj = m.objective ?? (shown ? this.objOf[shown] : null);
     const mode = m.preview ? (this.replay ? 'saved preview' : 'live preview') : 'photo';
-    this.frames.microscope.tag.lastChild.textContent = [obj ? `${String(obj).replace(/x$/i, '')}×` : '', shown ? mode : ''].filter(Boolean).join(' ');
+    this.frames.microscope.tag.textContent = [obj ? `${String(obj).replace(/x$/i, '')}×` : '', shown ? mode : ''].filter(Boolean).join(' ');
     const bits = [];
     const st = m.stage_kinematics?.sample_pose || (!this.replay ? (L.stages || {}).transfer_stage : null);
     if (st) bits.push(`stage ${fmt(st.x, 1)}, ${fmt(st.y, 1)} mm`);
@@ -385,7 +429,7 @@ export class CameraCard {
     this.frames.microscope.capText.title = bits.join(' · ');  // the band is one line; the full text on hover
     const r = this.meta.reactor_microscope?.reactor || {};
     const pair = r.pair_observation;
-    this.frames.reactor_microscope.tag.lastChild.textContent = r.timestamp != null ? 'synthetic · saved observation' : 'synthetic image';
+    this.frames.reactor_microscope.tag.textContent = r.timestamp != null ? 'synthetic · saved observation' : 'synthetic image';
     this.frames.reactor_microscope.cap.textContent = [
       r.temperature_c != null ? `${fmt(r.temperature_c, 1)} °C` : null,
       r.flow_sccm != null ? `${fmt(r.flow_sccm, 1)} sccm` : null,
@@ -409,7 +453,7 @@ export class CameraCard {
 
   // ------------------------------------------------------------ last check
   verify(v, attempts) {
-    if (!v) return;
+    if (!v || !$('verify')) return;
     const m = v.measurements || {}, e = v.expected || {};
     if (m.offset_mm == null) return;  // a check without a position measurement stays in the tree only
     const fixes = attempts.filter(a => a.kind === 'corrected').length;

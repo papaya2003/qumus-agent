@@ -1,60 +1,14 @@
 // Presentation guidance, separate from the immutable recorded evidence.
-export const DIAGNOSTICS = {
-  'hallbar-source-diagnostic-first-20261101': ['Diagnostic 1: no eligible hBN', 'Six raw chips; no compatible pair.'],
-  'hallbar-source-diagnostic-balanced-20261101': ['Diagnostic 2: incompatible source sizes', 'Balanced allocation; hBN was too small for eligible Gr.'],
-};
+// Recordings named here get a readable History title and, when selected, a
+// one-line purpose. Diagnostics open on their Evidence tab.
+export const DIAGNOSTICS = {};
 
 export const DEMOS = {
-  // Third element true: listed under "Latest Hall-bar recordings".
-  'hallbar-live-sol-seed3-20261106-r1': ['hBN/Gr Hall bar, live gpt-6.1-sol, seed 3 (6 Nov)', 'Live model resumed from the seed-3 save point just before pair selection: it chose the hBN/graphene pair, laid out the device and stacked it on the eight-electrode chip.', true],
-  'astra-complete-recovery-20261029': ['Complete an experiment and recover from faults', 'A short task drives preparation, image review, stacking and simulated reaction. Three injected faults recover within one search; final stages are below 40 C. Original budget stop and explicit closeout remain visible.'],
-  'astra-collaborative-refinement-20261029': ['Refine the goal through operator dialogue', 'Four scripted operator changes preserve a reserved chip, add hBN and request independent largest-flake reviews. Both sources stay stored; no transfer or reaction. Interrupted closeout history is retained.'],
-  'astra-honest-stop-20261029': ['Recognize a persistent fault and stop honestly', 'A permanent microscope outage exhausts bounded recovery. Qumus reports that imaging and final storage did not finish; outputs are off and uncertainty remains visible.'],
-  'openai-material-metal-default-20261028-v7': ['Prepare hBN/Gr on Pd: complete workflow', 'Live model: 8 device jobs, 11 plan steps and 77 reported request usages. No tool errors or operator corrections. hBN remains topmost and nonreactive; mica, source images and cold storage verified. Qualitative simulation only.'],
-  'openai-material-metal-default-20261028-v5': ['Earlier: complete workflow with planning recovery', 'Live model: all 8 device jobs and 11 plan steps complete without operator correction. Seven rejected plan submissions and recovery evidence retained. Top hBN stays nonreactive; cold storage and per-request tokens verified.'],
-  'openai-material-metal-default-20261027-v2': ['Earlier: hBN/Gr on Pd, before final contract repairs', 'Live model: hBN stays topmost and nonreactive; all 12 steps close without operator correction. Six recovered planning refusals retained. Qualitative simulation only.'],
-  'openai-material-metal-recovery-20261027-v1': ['Close the original run without repeating device work', 'Live model with explicit operator correction of a mistyped job ID. Original failures, budget stop and recovery evidence retained; all 12 steps eventually close.'],
-  'openai-integrated-collaboration-recovery-20261027-v6': ['Change plans and recover from three faults', 'Live model: preserve the reserved chip, prepare graphene and hBN, recover within the same search, and stop with all plan steps closed.'],
-  'openai-integrated-reactor-20261027-v5': ['Earlier: two-flake reactor experiment', 'Historical two-reactive-flake interpretation, before the material-metal correction. Original recording and budget continuation preserved.'],
-  'material-metal-workflow-20261027-v1': ['Diagnostic: abstract material-metal handoff', 'Scripted contract fixture with abstract transfer receipts; not a completed device experiment.'],
-  'reactor-review-20261027-v2': ['Diagnostic: workflow guards and recovery', 'Scripted owner-review regression evidence; not autonomous live-model experiment acceptance.'],
-  'openai-integrated-device-20261027-v5': ['Review a layout, then approve the device', 'Live model: target-bound geometry, scripted operator approval, stacking and saved final image. All plan steps closed.'],
-  'experimental-reactor-pair-camera-loss-20261027-v9': ['Stop a reaction when its camera fails', 'Scripted prepared-pair fixture: targets off, residual heat and uncertainty retained; no false product.'],
-  'openai-collaboration-20261027-v3': ['Earlier: change the specimen, then the material', 'Pre-repair recording; retained as historical evidence.'],
-  'openai-recovery-20261027-v2': ['Earlier: recover from three transfer faults', 'Pre-repair recording on the previous bench.'],
-  'experimental-reactor-pair-normal-20261027-v3': ['Earlier: two prepared flakes react', 'Pre-repair scripted fixture; no ordinary-stock preparation.'],
-  'experimental-reactor-pair-camera-loss-20261027-v3': ['Earlier: stop after reactor camera loss', 'Pre-repair scripted fixture; retained unchanged.'],
-  'openai-device-approval-20261025': ['Earlier: build a device with your approval', '25 Oct baseline: layout review → approval → a stacked device and final image.'],
-  'openai-collaboration-20261025': ['Earlier: change the plan while Qumus works', '25 Oct baseline: one specimen change and saved flake photos.'],
-  'v2-device-pickup_fail-20261023': ['Retry a failed stamp pickup', 'A flake stays on its chip; the stamp tries again and completes the device.'],
-  'v2-device-stamp_torn-20261023': ['Replace a torn stamp film', 'The film tears; Qumus changes to a fresh stamp and completes the device.'],
-  'v2-arm_timeout-seed1': ['Recover from an arm timeout', 'One simulated serial timeout; retry the operation and finish the flake task.'],
-  'v2-microscope_offline-seed1': ['Stop when the microscope is offline', 'Optional third demo: bounded retries, then ask a person for help.'],
-  'v2-crash_holding_chip-seed1': ['Resume while the arm holds a chip', 'Recover after a process crash with a chip still in the robot gripper.'],
+  // Third element true: listed in History (owner, 2026-11-06: only the latest Hall-bar run).
+  'hallbar-live-sol-seed3-full-20261110': ['hBN/Gr Hall bar, live gpt-6.1-sol, tape to device (10 Nov)', 'Live model ran the whole Hall-bar job from the tapes: exfoliation, flake search, choosing the hBN/graphene pair, layout and stacking onto chip_e01 (device_001).', true],
+  'hallbar-live-sol-seed3-20261106-r1': ['hBN/Gr Hall bar, live gpt-6.1-sol, seed 3 (6 Nov)', 'Live model resumed from the seed-3 save point just before pair selection: it chose the hBN/graphene pair, laid out the device and stacked it on the eight-electrode chip.', false],
 };
 
-// October 2026 recordings of the earlier reactor/material-metal workflow (owner,
-// 2026-11-06): still playable, listed in their own folded History group.
-export const EARLIER = new Set([
-  'openai-material-metal-default-20261028-v7',
-  'openai-material-metal-default-20261028-v5',
-  'openai-material-metal-default-20261027-v2',
-  'openai-material-metal-recovery-20261027-v1',
-  'material-metal-workflow-20261027-v1',
-  'reactor-review-20261027-v2',
-  'openai-integrated-collaboration-recovery-20261027-v6',
-  'openai-integrated-reactor-20261027-v5',
-  'openai-integrated-device-20261027-v5',
-  'experimental-reactor-pair-camera-loss-20261027-v9',
-  'openai-collaboration-20261027-v3',
-  'openai-recovery-20261027-v2',
-  'experimental-reactor-pair-normal-20261027-v3',
-  'experimental-reactor-pair-camera-loss-20261027-v3',
-  'openai-device-approval-20261025',
-  'openai-collaboration-20261025',
-  'v2-device-pickup_fail-20261023',
-  'v2-device-stamp_torn-20261023',
-  'v2-arm_timeout-seed1',
-  'v2-microscope_offline-seed1',
-  'v2-crash_holding_chip-seed1',
-]);
+// The recordings History lists. Any other recording folder still plays by link
+// (?rec=<name>) and is listed only while selected or playing.
+export const CURRENT = new Set(Object.keys(DEMOS).filter(name => DEMOS[name][2]));

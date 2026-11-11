@@ -171,7 +171,8 @@ const modelSettings = new ModelSettings($('model-settings'), $('billing-settings
 const nowCap = h('span', { class: 'bc-text', id: 'bc-text' });  // a replay's lab action, in the title bar
 
 function layout(scene) {
-  if (scene === 'results') return { centre: 'v-results', right: 'detail' };
+  // nothing picked in Results: the right column shows the bench instead of an empty box
+  if (scene === 'results') return { centre: 'v-results', right: results.sel ? 'detail' : 'bench' };
   if (scene === 'lab') return labTab === 'status' && labv.category?.t === 'overview'
     ? { centre: 'v-lab', right: labv.sel ? 'detail' : 'cams' } : { centre: 'v-stock', right: 'detail' };
   if (scene === 'history') return { centre: histTab === 'runs' ? 'v-history' : 'v-xp', right: 'detail' };
@@ -419,7 +420,7 @@ function renderRight(force) {
   const sc = shell.scene, lay = layout(sc), box = $('r-detail');
   $('r-bench').hidden = lay.right === 'detail';
   box.hidden = lay.right !== 'detail';
-  let d = null, title = 'Bench', sub = REPLAY ? 'the lab as recorded' : 'what the lab looks like now', back = null;
+  let d = null, title = 'Bench', sub = REPLAY ? 'as recorded' : 'live', back = null;
   if (lay.right === 'cams') { title = 'Cameras'; sub = REPLAY ? 'as recorded' : 'now'; }
   if (lay.right === 'detail') {
     // typing in the details (a name for the film report): data changes wait
@@ -431,7 +432,11 @@ function renderRight(force) {
       if (labv.category?.t === 'overview' && labTab === 'status') back = { text: '← Cameras', fn: () => { labv.sel = null; sceneDirty(true); } };
     } else if (sc === 'history') {
       d = histTab === 'runs' ? hist.detail(dctx(run)) : xp.detail();
-      d = d || { title: histTab === 'runs' ? 'Key moments' : 'Where it came from', sub: '', node: h('div', { class: 'placeholder', text: histTab === 'runs' ? 'Pick a run on the left.' : 'Click an entry for where it came from and its votes.' }) };
+      const current = histTab === 'runs' && hist.sel?.kind === 'current';
+      d = d || { title: histTab === 'runs' ? 'Key moments' : 'Where it came from', sub: '', node: current
+        ? h('div', { class: 'placeholder' }, 'The current run goes on in Progress; its plan, jobs and checks are there. ',
+          h('button', { class: 'lnk-btn', text: 'Open Progress', onclick: () => shell.open('progress', 'centre') }))
+        : h('div', { class: 'placeholder', text: histTab === 'runs' ? 'Pick a run on the left.' : 'Click an entry for where it came from and its votes.' }) };
     } else if (progressDetail) {
       d = progressItem(progressDetail);
       back = { text: '← Bench', fn: () => { progressDetail = null; shell.render(); renderRight(true); } };
@@ -590,7 +595,7 @@ function renderWaiting() {
   if (el.textContent !== text) el.textContent = text;
   el.hidden = !w;
   const hint = w ? 'Qumus waits for you: do what it asks, then tell it here and it goes on'
-    : 'Enter to send · Shift+Enter for a new line · Esc stops · during a run Qumus reads your message after its current tool call';
+    : 'Enter to send · Shift+Enter for a new line · Esc stops';
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
 }
 
@@ -747,6 +752,17 @@ function renderControls() {
   const paused = runs.some(r => r.status === 'paused'), running = runs.some(r => r.status === 'running' || r.status === 'queued');
   $('continue-btn').hidden = !(S.stopped || paused);
   $('stop-btn').classList.toggle('quiet', !S.busy && !running);
+  syncComposer();
+}
+// One button in the corner like Claude's composer: Send while idle, Stop while
+// Qumus works; both while it works and something is typed (a message during a
+// run is read after the current tool call). Esc still stops at any time.
+function syncComposer() {
+  const working = !$('stop-btn').classList.contains('quiet');
+  $('stop-btn').hidden = !working;
+  $('send').hidden = working && !$('input').value.trim();
+  // with both showing, Send is the main action and Stop steps back
+  $('stop-btn').classList.toggle('secondary', working && !$('send').hidden);
 }
 
 $('stop-btn').onclick = async () => {
@@ -813,7 +829,7 @@ async function refreshBench(reconcile) {
     bench.statusOf = id => run.inv.stampStatus(id);  // stamp status for the tooltip (ledger)
     bench.stampOf = id => run.inv.samples.get(id);
     // the top-view frame takes the table's own shape (plus its legend strip), so no blank bars
-    $('bench').parentElement.style.aspectRatio = `${bench.w} / ${bench.h + 22 * bench.w / 436}`;
+    $('bench').parentElement.style.aspectRatio = `${bench.w} / ${bench.h}`;
     $('labmap-wrap').style.aspectRatio = `${bench.w} / ${bench.h}`;
     lab = new LabState(b.layout);
     lab.setAll(fromBench(b, b.layout));
@@ -979,20 +995,21 @@ async function send(text) {
   text = (text ?? input.value).trim();
   if (!text) return;
   try { await post('/api/messages', { text }); } catch { toast('Could not send'); return; }
-  input.value = ''; autosize(); sendBtn.disabled = true;
+  input.value = ''; autosize(); sendBtn.disabled = true; syncComposer();
 }
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(140, input.scrollHeight) + 'px'; }
-input.addEventListener('input', () => { autosize(); sendBtn.disabled = !input.value.trim(); });
+input.addEventListener('input', () => { autosize(); sendBtn.disabled = !input.value.trim(); syncComposer(); });
 input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 sendBtn.onclick = () => send();
 
 function emptyState() {
   const sugg = ['Place a chip on the transfer stage', 'Get me a graphene flake', 'Make a graphene device'];
   return h('div', { class: 'empty' },
+    h('img', { class: 'empty-mark', src: '/static/logo.svg', alt: '', width: 44, height: 44 }),
     h('h3', { text: 'What should Qumus do?' }),
     h('div', { text: 'Qumus turns your request into a plan and hands the work to its team. You can write to it, Stop or Continue at any time.' }),
     h('div', { class: 'suggest' }, sugg.map(t => h('button', { text: t, onclick: () => send(t) }))),
-    h('div', { class: 'muted small empty-more', text: 'Earlier runs and the demo recordings are in History.' }));
+    h('div', { class: 'muted small empty-more', text: 'Earlier runs are in History.' }));
 }
 
 // ------------------------------------------------------------------ live link
@@ -1144,7 +1161,10 @@ function replayProgress() {
   $('rp-play').setAttribute('aria-label', R.paused ? 'Play' : 'Pause');
   document.querySelectorAll('#rp-speed button').forEach(b => b.classList.toggle('on', +b.dataset.s === R.speed));
   $('conn-dot').className = 'dot ' + (R.paused ? 'paused' : 'replay');
-  $('conn-text').textContent = R.ended ? 'Replay finished' : R.paused ? 'Replay paused' : 'Replaying';
+  // a stand-alone recording page has no Qumus behind it: say so where the link state is
+  $('conn-text').textContent = (R.ended ? 'Replay finished' : R.paused ? 'Replay paused' : 'Replaying')
+    + (S.serverLive ? '' : ' · recording only');
+  if (!S.serverLive) $('link-state').title = 'This page only plays a recording and is not connected to a running Qumus: no model calls, no live run to go back to. Start Qumus with Start Qumus on the desktop to work live.';
 }
 
 let autoplay = null;  // the first visit starts playing after a moment, unless the user acts first
@@ -1247,7 +1267,7 @@ async function bootReplay() {
   document.title = `${rec.meta?.title || 'Recorded run'} · Qumus v2 replay`;
   renderMode();
   $('back-live').hidden = !S.serverLive;
-  $('bench-legend').lastElementChild.textContent = 'world frame · mm · recorded';
+  $('bench-legend').textContent = 'recorded · mm';
   $('replay-bar').hidden = false;
   // a row of the tree seeks the replay: a lab action to its start, a device command to itself
   tree.hooks.seek = key => {

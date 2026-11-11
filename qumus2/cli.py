@@ -27,6 +27,9 @@ def _serve(args: argparse.Namespace) -> None:
 
     scenario: Any = args.scenario
     seed = args.seed
+    if args.target_bundle and Path(args.target_bundle).is_file():
+        # qumus-simlab takes the bundle's folder; the operator may name its target.json
+        args.target_bundle = str(Path(args.target_bundle).resolve().parent)
     simlab_args = ["--target-bundle", args.target_bundle] if args.target_bundle else None
     resumed = None
     if args.resume:

@@ -403,7 +403,11 @@ def create_app(services: Services, *, start_driver: bool = True,
     @app.get('/api/models')
     async def models() -> dict[str, Any]:
         if catalog is None:
-            return {'available': False, 'detail': 'Model switching requires the OpenAI Agents SDK runtime.'}
+            # scripted agents make no model calls: say how to start the real model
+            return {'available': False, 'reason': 'scripted',
+                    'detail': 'This Qumus runs scripted agents (free, no model calls), so there is no model to '
+                              'choose. To use the real model, start Qumus with Start Qumus on the desktop, or '
+                              'run `python -m qumus2 serve --openai`.'}
         try:
             rows = await asyncio.to_thread(catalog.list)
             return {'available': True, **s.runtime.model_settings(), 'models': rows}

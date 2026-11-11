@@ -43,6 +43,12 @@
   --a-designer: #2f80d1;
   --a-user: #3d5afe;
   --radius: 14px;
+  --r-card: 12px;
+  --scope-bg: #0d0f14;
+  --brand-ink: #1c2350;
+  --brand-cyan: #3fb8c7;
+  --scroll-thumb: rgba(23, 23, 26, 0.16);
+  --scroll-thumb-hover: rgba(23, 23, 26, 0.32);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
     "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
@@ -61,7 +67,7 @@
     --m-hbn: #7fb0e0; --m-gr: #c8c8d0; --m-tmd: #c99ae0; --m-metal: #e2b84e; --m-other: #8a939d;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
     --a-orchestrator: #ededf0; --a-advisor: #a68bff; --a-eyes: #36c7b8; --a-hands: #f0a050;
-    --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff;
+    --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff; --scroll-thumb: rgba(237, 237, 240, 0.16); --scroll-thumb-hover: rgba(237, 237, 240, 0.32); --brand-cyan: #5fd4e0;
     color-scheme: dark;
   }
 }
@@ -76,7 +82,7 @@
   --m-hbn: #7fb0e0; --m-gr: #c8c8d0; --m-tmd: #c99ae0; --m-metal: #e2b84e; --m-other: #8a939d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
   --a-orchestrator: #ededf0; --a-advisor: #a68bff; --a-eyes: #36c7b8; --a-hands: #f0a050;
-  --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff;
+  --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff; --scroll-thumb: rgba(237, 237, 240, 0.16); --scroll-thumb-hover: rgba(237, 237, 240, 0.32); --brand-cyan: #5fd4e0;
   color-scheme: dark;
 }
 
@@ -89,6 +95,17 @@ body {
   letter-spacing: 0.005em;
 }
 button { font: inherit; color: inherit; cursor: pointer; }
+/* One scrollbar style everywhere (Jialei 2026-11-11): a thin rounded thumb on
+   a transparent track, darker on hover. WebKit/Blink draw the pseudo-elements;
+   Firefox, which has none, uses the standard properties. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; min-height: 32px; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
+::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+}
 .mono { font-family: var(--mono); font-size: 12px; }
 .muted { color: var(--muted); }
 .grow { flex: 1; }
@@ -103,11 +120,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .tbar { grid-area: title; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; gap: 12px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 14px; }
-.brand-mark {
-  width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg);
-  display: grid; place-items: center; font-size: 12.5px; font-weight: 700; letter-spacing: -0.02em;
-}
-.brand small { font-weight: 450; color: var(--muted); font-size: 12px; margin-left: 1px; }
+.brand-mark { width: 24px; height: 24px; border-radius: 7px; display: block; flex: none; box-shadow: 0 1px 2px rgba(17, 20, 43, .25); }
+.brand small { font-weight: 560; color: var(--muted); font-size: 10.5px; margin-left: -2px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); line-height: 16px; letter-spacing: .02em; }
 .title-right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-width: 0; }
 /* the one sentence: step · who does what · for how long · last check; its column
    shrinks so a long sentence ends in "…" instead of running under the right side */
@@ -144,8 +158,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ab span { display: block; font-size: 10px; font-weight: 560; letter-spacing: .01em; line-height: 1; }
 .ab:hover { color: var(--ink); background: var(--line-2); }
 .ab.on, .ab.here { color: var(--ink); }
-.ab.on { background: var(--line-2); }
-.ab.on::before { content: ""; position: absolute; left: -4px; top: 10px; bottom: 10px; width: 2px; border-radius: 2px; background: var(--ink); }
+.ab.on { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.ab.on svg { stroke-width: 1.9; }
+.ab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .badge {
   position: absolute; top: 3px; right: 7px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px;
   background: var(--accent); color: #fff; font: 600 9.5px/14px var(--font); font-style: normal; text-align: center;
@@ -158,8 +173,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .side { grid-area: side; width: var(--side-w); background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .app.no-side .side { display: none; }
 .page { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.vh { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; flex: none; min-width: 0; }
-.vh h2 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.vh { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 14px; flex: none; min-width: 0; }
+.vh h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -0.005em; color: var(--ink); white-space: nowrap; }
 .vh .sub { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .vh .grow { flex: 1; }
 .scroll { flex: 1; min-height: 0; overflow: auto; padding: 6px 12px 14px; }
@@ -189,8 +204,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .ed { grid-area: ed; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
 /* a plain heading like the side pages' (review issue 4: no tab look, no rule under it) */
-.edh { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 14px; flex: none; background: var(--panel); }
-.edh h2 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.edh { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px 0 16px; flex: none; background: var(--panel); }
+.edh h2 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -0.005em; color: var(--ink); white-space: nowrap; }
 .edh .grow { flex: 1; }
 .icon-btn {
   width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line);
@@ -360,7 +375,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .recovered-problems > summary { padding: 10px 16px; color: var(--muted); cursor: pointer; }
 .cam .overview-diagram { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cam.has-diagram .diagram-heading { visibility: hidden; }
-.cam.has-diagram > .ctag { z-index: 1; }
 .demo-guide { line-height: 1.5; color: var(--muted); padding: 0 8px; }
 .demo-purpose { display: block; white-space: normal; line-height: 1.45; font-size: 11px; color: var(--muted); margin-top: 5px; }
 .demo-more > summary { cursor: pointer; color: var(--muted); padding: 16px 8px; font-size: 12px; }
@@ -388,8 +402,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- conversation (feed.js) ---------- */
 .feed-wrap { flex: 1; min-height: 0; position: relative; }
 .feed { position: absolute; inset: 0; overflow-y: auto; padding: 12px 16px 8px; overscroll-behavior: contain; }
-.feed::-webkit-scrollbar, .scroll::-webkit-scrollbar, .plan-view::-webkit-scrollbar { width: 8px; height: 8px; }
-.feed::-webkit-scrollbar-thumb, .scroll::-webkit-scrollbar-thumb, .plan-view::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
 .item { animation: rise .22s ease-out both; }
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .jump {
@@ -547,6 +559,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 
 .empty { margin: auto; text-align: center; padding: 30px 10px; color: var(--muted); }
+.empty .empty-mark { display: block; margin: 0 auto 14px; border-radius: 12px; box-shadow: 0 6px 20px rgba(17, 20, 43, .18); }
 .empty h3 { color: var(--ink); font-size: 17px; font-weight: 620; margin: 0 0 6px; letter-spacing: -0.005em; }
 .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 .suggest button {
@@ -555,113 +568,127 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .suggest button:hover { border-color: var(--accent); color: var(--accent); }
 
-.composer { border-top: 1px solid var(--line-2); padding: 10px 12px 12px; }
+/* The composer like Claude's: one rounded box, the buttons inside it at the
+   bottom right as rounded squares (send: arrow; stop: square; continue: play). */
+.composer { padding: 8px 14px 12px; }
 .inputrow {
-  display: flex; align-items: flex-end; gap: 8px; border: 1px solid var(--line); border-radius: 12px;
-  padding: 6px 6px 6px 12px; background: var(--panel-2); transition: border-color .15s, box-shadow .15s;
+  display: flex; align-items: flex-end; gap: 6px; border: 1px solid var(--line); border-radius: 18px;
+  padding: 8px 8px 8px 14px; background: var(--panel); box-shadow: 0 1px 2px rgba(20, 20, 30, .04), 0 4px 14px rgba(20, 20, 30, .04);
+  transition: border-color .15s, box-shadow .15s;
 }
-.inputrow:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.inputrow:focus-within { border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); box-shadow: 0 1px 2px rgba(20, 20, 30, .05), 0 6px 20px rgba(20, 20, 30, .07); }
 .inputrow textarea {
   flex: 1; border: 0; outline: 0; resize: none; background: transparent; color: var(--ink);
-  font: inherit; max-height: 140px; min-height: 22px; padding: 4px 0; line-height: 1.5;
+  font: inherit; font-size: 14px; max-height: 160px; min-height: 24px; padding: 5px 0; line-height: 1.5;
 }
-.send {
-  width: 30px; height: 30px; border-radius: 8px; border: 0; background: var(--ink); color: var(--bg);
-  display: grid; place-items: center; flex: none; transition: opacity .15s;
+.inputrow textarea::placeholder { color: var(--muted); }
+.send, .stop-btn, .go-btn {
+  width: 32px; height: 32px; border-radius: 10px; border: 0; display: grid; place-items: center; flex: none;
+  transition: background .15s, color .15s, opacity .15s, transform .1s;
 }
-.send:disabled { opacity: .3; cursor: default; }
-.stop-btn, .go-btn {
-  width: 30px; height: 30px; border-radius: 50%; border: 0; display: grid; place-items: center; flex: none;
-  color: #fff; transition: background .15s, opacity .2s, transform .12s;
-}
-.stop-btn { background: var(--danger); }
-.stop-btn:hover, .stop-btn.armed { filter: brightness(1.1); transform: scale(1.06); }
-.stop-btn.quiet { background: var(--line); color: var(--ink-2); }
-.stop-btn.quiet:hover { background: var(--danger); color: #fff; }
-.stop-btn i { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-.go-btn { background: var(--ok); animation: rise .25s ease-out; }
-.go-btn:hover { filter: brightness(1.08); transform: scale(1.06); }
-.go-btn i { width: 0; height: 0; margin-left: 3px; border-left: 10px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
-.hint { font-size: 11px; color: var(--muted); margin-top: 6px; padding-left: 2px; }
+.send:active:not(:disabled), .stop-btn:active, .go-btn:active { transform: scale(.94); }
+.send { background: var(--ink); color: var(--bg); }
+.send:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
+.send:disabled { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--muted); opacity: 1; cursor: default; }
+.send:focus-visible, .stop-btn:focus-visible, .go-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stop-btn { background: var(--ink); color: var(--bg); }
+.stop-btn:hover, .stop-btn.armed { background: var(--danger); color: #fff; }
+.stop-btn.quiet { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+.stop-btn.quiet:hover { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent); }
+.stop-btn i { width: 10px; height: 10px; border-radius: 2.5px; background: currentColor; }
+.model-blocked { margin: 10px 0; padding: 9px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: 12.5px; line-height: 1.5; border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
+.stop-btn.secondary { background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); }
+.stop-btn.secondary:hover { background: var(--danger); color: #fff; }
+.pane.expanded .pane-x:not(.pane-close) { display: none; }
+.go-btn { background: var(--ok); color: #fff; animation: rise .25s ease-out; }
+.go-btn:hover { background: color-mix(in srgb, var(--ok) 85%, #000); }
+.go-btn i { width: 0; height: 0; margin-left: 3px; border-left: 10px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-radius: 1px; }
+.hint { font-size: 11px; color: var(--muted); margin-top: 6px; padding-left: 14px; }
 
 /* ---------- lab column ---------- */
 .lab { grid-area: lab; width: var(--lab-w); background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .app.no-lab[data-r="bench"] .lab { display: none; }
-/* three pictures stacked (bench top view, overview camera, microscope) and the
-   last-check line; the pictures share the height and shrink together on a
-   short window instead of scrolling */
-.lab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 0 12px 10px; overflow: hidden; }
-.bench-wrap {
-  position: relative; border-radius: 10px; background: var(--bench); border: 1px solid var(--line-2);
-  flex: 1 1 auto; min-height: 110px; aspect-ratio: 2 / 1; overflow: hidden;
+/* Three picture panes (Jialei 2026-11-11): the bench top view, the camera and
+   the microscope of the instrument that moves. Each pane has a one-line
+   header (title, source, "moving", Expand); the pictures share the height and
+   shrink together on a short window instead of scrolling. */
+.lab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 2px 12px 12px; overflow: hidden; }
+.pane {
+  position: relative; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel);
+  transition: border-color .2s, box-shadow .2s;
 }
-.bench-wrap svg { position: absolute; left: 0; right: 0; top: 22px; bottom: 0; width: 100%; height: calc(100% - 22px); display: block; }
+.pane-top { flex: 0 1 auto; }
+.cam-pane { container-type: inline-size; }
+/* a narrow column keeps the title, the source and Expand; the photo note gives way */
+@container (max-width: 400px) { .cam-pane .pane-notes { display: none; } }
+.cam-pane[data-slot="camera"] { flex: 1 1 0; min-height: 120px; }
+.cam-pane[data-slot="microscope"] { flex: 1.5 1 0; min-height: 150px; }
+.pane-h {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 5px 0 12px; flex: none; min-width: 0;
+  border-bottom: 1px solid var(--line-2); font-size: 12px; white-space: nowrap;
+}
+.pane-h > b { font-weight: 640; color: var(--ink); letter-spacing: -0.003em; }
+.pane-h .grow { flex: 1; }
+.pane-src {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  padding: 1px 7px; border-radius: 6px; background: var(--line-2); color: var(--ink-2); font-size: 11px; font-weight: 530;
+}
+.pane-notes { display: flex; min-width: 0; flex: 0 2 auto; overflow: hidden; }
+.pane-note { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pane-live { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 11px; font-weight: 560; color: var(--accent); }
+.pane-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse-a 1.2s infinite; }
+.pane-x {
+  width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted); transition: background .15s, color .15s;
+}
+.pane-x svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pane-x:hover { background: var(--line-2); color: var(--ink); }
+.pane-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pane.active { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pane-b { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.bench-wrap { background: var(--bench); aspect-ratio: 2 / 1; min-height: 70px; }
+.bench-wrap svg { position: absolute; inset: 6px 8px; width: calc(100% - 16px); height: calc(100% - 12px); display: block; }
 /* The Progress card already frames Top view; retain the table geometry without a second frame. */
 #bench .s-table { fill: none; stroke: none; }
-.bench-legend {
-  position: absolute; left: 10px; right: 10px; top: 5px; font: 10.5px var(--mono); color: var(--muted); letter-spacing: .04em;
-  display: flex; gap: 8px; align-items: center; pointer-events: none;
-  white-space: nowrap;
-}
-.bench-legend b { color: var(--ink-2); font-weight: 600; text-transform: uppercase; }
-.bench-legend .expand-bench { pointer-events: auto; flex: none; padding: 0; }
-.bench-legend span { overflow: hidden; text-overflow: ellipsis; }
+.cam-pane[data-slot="camera"] .pane-b { background: var(--bench); }
+.cam-pane[data-slot="microscope"] .pane-b { background: var(--scope-bg); }
 
 .cams { display: contents; }
-.cam {
-  border-radius: 10px; overflow: hidden; background: #0d0f14; position: relative; cursor: zoom-in;
-  flex: 1 1 auto; min-height: 110px; border: 1px solid var(--line-2);
-}
-.cam[data-cam="overview_camera"] { aspect-ratio: 2 / 1; background: var(--bench); }
-.cam[data-cam$="microscope"] {
-  aspect-ratio: 3 / 2; display: grid;
-  grid-template-rows: 22px minmax(0, 1fr) 22px;
-}
-.cam.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cam { position: absolute; inset: 0; overflow: hidden; background: transparent; cursor: zoom-in; }
+.cam[data-cam$="microscope"] { display: grid; grid-template-rows: minmax(0, 1fr) 24px; background: var(--scope-bg); }
 .cam img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; opacity: 0; transition: opacity .35s ease; }
-.cam[data-cam$="microscope"] { background: #0d0f14; }
-/* the label and the caption get their own bands: a micrograph carries its own
-   magnification and scale bar in its corners, which the overlays used to cover */
-.cam[data-cam$="microscope"] img {
-  background: #0d0f14; grid-row: 2 / 3; grid-column: 1 / 2;
-  inset: 0; height: 100%;
-}
+/* the caption gets its own band: a micrograph carries its own magnification
+   and scale bar in its corners, which an overlay would cover */
+.cam[data-cam$="microscope"] img { background: var(--scope-bg); grid-row: 1 / 2; grid-column: 1 / 2; inset: 0; height: 100%; }
 .cam img.on { opacity: 1; z-index: 1; }
 /* a recorded stamp pass plays from its video clip (#205) */
 /* transparent: a clip that drops its picture while the next one decodes shows
    the held still of its last frame underneath instead of black */
 .cam .cam-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 2;
-  background: transparent; grid-row: 2 / 3; grid-column: 1 / 2; cursor: pointer; }
+  background: transparent; grid-row: 1 / 2; grid-column: 1 / 2; cursor: pointer; }
 .cam .cam-hold { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; z-index: 2;
-  background: #0d0f14; grid-row: 2 / 3; grid-column: 1 / 2; pointer-events: none; }
+  background: var(--scope-bg); grid-row: 1 / 2; grid-column: 1 / 2; pointer-events: none; }
 .cam .cam-hold[hidden] { display: none; }
 .cam.showing-video img { visibility: hidden; }
 /* the previous picture stays fully visible underneath while the new one fades in (no black flash) */
 .cam img.prev { opacity: 1; z-index: 0; transition: none; }
 .cam-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; text-align: center; font-size: 12px; color: var(--muted); }
-.cam[data-cam$="microscope"] .cam-empty { color: rgba(255,255,255,.55); }
-.cam .ctag, .cam .cap, .cam .rec { position: absolute; font: 10.5px var(--mono); letter-spacing: .04em; pointer-events: none; }
-.cam .ctag { left: 10px; top: 5px; color: var(--muted); display: flex; gap: 6px; }
-.cam .ctag b { color: var(--ink-2); font-weight: 600; text-transform: uppercase; }
-.cam .cap { right: 8px; bottom: 5px; color: var(--muted); }
+.cam[data-cam$="microscope"] .cam-empty { color: rgba(255,255,255,.5); grid-row: 1 / 2; }
+.cam .cap { position: absolute; right: 8px; bottom: 5px; font: 10.5px var(--mono); letter-spacing: .02em; color: var(--muted); pointer-events: none; }
 .cam[data-cam$="microscope"] .cap {
-  position: relative; grid-row: 3; inset: auto; min-width: 0;
-  padding: 0 8px; line-height: 22px; display: flex; white-space: nowrap; overflow: hidden;
+  position: relative; grid-row: 2; inset: auto; min-width: 0; padding: 0 10px; line-height: 24px; display: flex;
+  white-space: nowrap; overflow: hidden; color: rgba(255,255,255,.66); border-top: 1px solid rgba(255,255,255,.06);
 }
 /* one fixed line, so the picture above never changes size as the text changes */
 .cam[data-cam$="microscope"] .cap > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
-.cam .ctag .expand-cam { pointer-events: auto; padding: 0; font: inherit; letter-spacing: 0; color: #9db8ff; text-shadow: none; }
-.cam.expanded .expand-cam { display: none; }
-.lightbox .expanded-cam { width: min(1400px, 95vw); padding: 16px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: #0d0f14; cursor: default; }
-.expanded-cam .expanded-controls { color: rgba(255,255,255,.9); }
-.lightbox .cam.expanded { flex: none; width: min(100%, calc((82vh - 70px) * 1.5)); min-height: 0; cursor: default; }
-.lightbox .cam.expanded img { max-width: none; max-height: none; border-radius: 0; box-shadow: none; }
-.cam .rec { right: 8px; top: 6px; color: var(--muted); display: flex; gap: 5px; align-items: center; }
-.cam .rec i { width: 6px; height: 6px; border-radius: 50%; background: #ff5b52; }
-.cam[data-cam$="microscope"] .ctag, .cam[data-cam$="microscope"] .cap, .cam[data-cam$="microscope"] .rec { color: rgba(255,255,255,.72); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
-.cam[data-cam$="microscope"] .ctag b { color: rgba(255,255,255,.92); }
-.cam.active .ctag::after { content: "· a job works here"; color: var(--accent); letter-spacing: 0; text-transform: none; }
-.cam[data-cam$="microscope"].active .ctag::after { color: rgba(255,255,255,.85); }
+/* Expand: the whole pane in the lightbox, still live */
+.lightbox .expanded-cam { width: min(1400px, 94vw); height: min(88vh, 900px); padding: 0; border: 0; background: none; cursor: default; align-items: stretch; }
+.lightbox .pane.expanded { flex: 1 1 auto; min-height: 0; box-shadow: 0 24px 70px rgba(0,0,0,.45); border-color: var(--line); }
+.lightbox .pane.expanded .pane-h { height: 40px; font-size: 13px; }
+.lightbox .pane.expanded .cam { cursor: default; }
+.lightbox .pane.expanded img { max-width: none; max-height: none; border-radius: 0; box-shadow: none; }
+.lightbox .expanded-cam figcaption { text-align: center; }
 
 /* the last check: one line; "history" unfolds the measurements and attempts */
 .verify { flex: none; padding: 2px 2px 0; min-height: 26px; }
@@ -798,7 +825,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .side { border-left: 0; border-radius: 0 10px 10px 0; }
   .app.no-side .act { border-radius: 10px; }
   .lab { margin-right: 6px; }
-  .ab.on::before { left: -3px; }
   .pane-gutter { display: grid; place-items: center; position: relative; z-index: 5; cursor: col-resize; touch-action: none; }
   .pane-gutter-side { grid-area: gs; }
   .pane-gutter-lab { grid-area: gl; }
@@ -854,7 +880,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .phone-pages button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   /* phone: the three pictures keep their shape and the column scrolls */
   .lab-body { padding: 0 10px 10px; overflow: auto; }
-  .bench-wrap, .cam { flex: none; }
+  .pane { flex: none !important; }
+  .cam-pane[data-slot="camera"] .pane-b { aspect-ratio: 2 / 1; }
+  .cam-pane[data-slot="microscope"] .pane-b { aspect-ratio: 4 / 3; }
   .sb { gap: 10px; }
   .sb .cost, #run-time, .sb-safety { display: none; }
   /* the title sentence: keep the step and the check tag, let the action text give way */
@@ -1342,8 +1370,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* ---------- centre views ---------- */
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .vbody { flex: 1; min-height: 0; overflow: auto; padding: 12px 20px 24px; }
-.vbody::-webkit-scrollbar, .detail::-webkit-scrollbar { width: 8px; }
-.vbody::-webkit-scrollbar-thumb, .detail::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
 .placeholder.pad { padding: 24px 4px; }
 .nothing { font-size: 12.5px; color: var(--muted); padding: 2px 0; }
 .nothing::before { content: "✓ "; color: var(--ok); font-weight: 700; }
@@ -1457,8 +1483,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 #lab[data-r="detail"] #r-title { text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--ink); }
 /* the right column's kinds: the bench (Progress), the cameras (Lab · Status) */
-#lab[data-r="cams"] .bench-wrap, #lab[data-r="cams"] .verify { display: none; }
-#lab[data-r="cams"] .cam { flex: 1 1 0; }
+#lab[data-r="cams"] .pane-top { display: none; }
 
 /* ---------- Lab · Status: the lab map ---------- */
 #labmap-body { display: flex; flex-direction: column; gap: 10px; }
@@ -1567,7 +1592,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .hh-t { flex-direction: column; }
   .hist-sub .muted { display: none; }
   .pv-feed { height: 70vh; }
-  #lab[data-r="cams"] .cam { flex: none; }
   .wall { grid-template-columns: minmax(0, 1fr); }
 }
 

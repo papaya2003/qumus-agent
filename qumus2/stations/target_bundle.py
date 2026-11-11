@@ -24,8 +24,12 @@ from qumus2.records.device_design import (
 FILES = ("target.json", "electrode-layout.gds")
 
 
-def import_target_bundle(bundle_dir: str | Path, workspace: str | Path) -> Path:
-    """Copy target.json + electrode-layout.gds into `<workspace>/targets/<sha>/`."""
+def validate_target_bundle(bundle_dir: str | Path) -> ImportedHallBarTarget:
+    """Check a bundle without copying it (Start Qumus checks before it starts anything)."""
+    return _read(bundle_dir)[1]
+
+
+def _read(bundle_dir: str | Path) -> tuple[dict[str, bytes], ImportedHallBarTarget]:
     bundle = Path(bundle_dir).resolve()
     if bundle.is_file():
         bundle = bundle.parent
@@ -38,6 +42,12 @@ def import_target_bundle(bundle_dir: str | Path, workspace: str | Path) -> Path:
         raise ValueError("an imported target needs its explicit versioned contract")
     if hashlib.sha256(raw["electrode-layout.gds"]).hexdigest() != target.import_receipt.source_sha256:
         raise ValueError("electrode-layout.gds does not match the target's import receipt")
+    return raw, target
+
+
+def import_target_bundle(bundle_dir: str | Path, workspace: str | Path) -> Path:
+    """Copy target.json + electrode-layout.gds into `<workspace>/targets/<sha>/`."""
+    raw, target = _read(bundle_dir)
     directory = imported_target_directory(Path(workspace), target)
     if directory.exists():
         for name, data in raw.items():

@@ -9,6 +9,7 @@ export class ModelSettings {
   open(replay, serverLive) {
     if (this.loaded) {
       if (serverLive && !replay && Date.now() - this.billingAt > 10000) this.loadBilling();
+      if (serverLive && !replay) this.refreshBlocker?.();
       return;
     }
     // Boot can render a restored Settings tab before health resolves. Unknown
@@ -21,7 +22,10 @@ export class ModelSettings {
     this.loaded = true;
     this.replay = replay;
     if (!serverLive) {
-      this.host.textContent = 'Open the normal Qumus app to choose a model.';
+      // a stand-alone recording page (qumus2 replay): no Qumus server behind it
+      this.host.replaceChildren(h('div', { class: 'settings-section-heading' }, h('div', {}, h('h2', { text: 'Models & team' }))),
+        h('p', { class: 'model-blocked', role: 'status', text: 'This page only plays a recording. It is not connected to a running Qumus, so there is no model to choose and no live run to go back to.' }),
+        h('p', { class: 'muted small', text: 'To use the real model, start Qumus with Start Qumus on the desktop (or `python -m qumus2 serve --openai`). Recordings also play there, under History.' }));
       this.billingHost.textContent = 'Playback makes no model calls and costs nothing.';
       return;
     }
@@ -32,7 +36,11 @@ export class ModelSettings {
   async loadModels(replay) {
     try {
       const cfg = await api('/api/models');
-      if (!cfg.available) { this.host.textContent = cfg.detail; return; }
+      if (!cfg.available) {
+        this.host.replaceChildren(h('div', { class: 'settings-section-heading' }, h('div', {}, h('h2', { text: 'Models & team' }))),
+          h('p', { class: 'model-blocked', role: 'status', text: cfg.detail }));
+        return;
+      }
       const roles = AGENTS.filter(role => role !== 'orchestrator');
       const models = [...cfg.models];
       for (const id of [cfg.model, ...Object.values(cfg.agent_models || {}).map(c => c.model)]) {
@@ -57,6 +65,12 @@ export class ModelSettings {
       const limitNote = h('p', { class: 'muted small model-context-source' });
       const note = h('p', { class: 'model-warning small', role: 'status' });
       const status = h('p', { class: 'small model-status', role: 'status' });
+      // the server's rule, shown before any change instead of after Save
+      const blocked = h('p', { class: 'model-blocked', role: 'status', hidden: true });
+      const showBlocker = () => { blocked.textContent = cfg.switch_blocked ? `Models can be changed between runs. ${cfg.switch_blocked}` : ''; blocked.hidden = !cfg.switch_blocked; };
+      this.refreshBlocker = async () => {
+        try { const now = await api('/api/models'); cfg.switch_blocked = now.switch_blocked; showBlocker(); markDirty(); } catch { /* keep the last answer */ }
+      };
       const summary = h('p', { class: 'muted small routing-summary' });
       const ratesBody = h('div', { class: 'model-rate-list' });
       const rates = h('details', { class: 'settings-details routing-rates' },
@@ -99,7 +113,7 @@ export class ModelSettings {
       const markDirty = () => {
         const changed = JSON.stringify(draft()) !== savedDraft;
         const unsupported = [select.value, ...[...team.values()].map(row => row.choice.value).filter(Boolean)].some(unusable);
-        apply.disabled = replay || saving || !changed || unsupported;
+        apply.disabled = replay || saving || !changed || unsupported || !!cfg.switch_blocked;
         discard.disabled = replay || saving || !changed;
         status.textContent = changed ? 'Unsaved changes' : 'All changes saved';
       };
@@ -192,14 +206,14 @@ export class ModelSettings {
           for (const row of team.values()) row.choice.disabled = replay;
           for (const fields of rateInputs.values()) for (const input of fields) input.disabled = replay;
           reset.disabled = replay || ![...team.values()].some(row => row.choice.value);
-          apply.disabled = replay || JSON.stringify(draft()) === savedDraft || [select.value, ...[...team.values()].map(row => row.choice.value).filter(Boolean)].some(unusable);
+          apply.disabled = replay || !!cfg.switch_blocked || JSON.stringify(draft()) === savedDraft || [select.value, ...[...team.values()].map(row => row.choice.value).filter(Boolean)].some(unusable);
           discard.disabled = replay || JSON.stringify(draft()) === savedDraft;
         }
       };
       this.host.replaceChildren(
         h('div', { class: 'settings-section-heading' }, h('div', {}, h('h2', { text: 'Models & team' }),
           h('p', { class: 'muted', text: 'Choose a shared default. Give a specialist its own model only when you need to.' })),
-          h('span', { class: 'tag', text: 'Experimental' })),
+          h('span', { class: 'tag', text: 'Experimental' })), blocked,
         h('div', { class: 'routing-default' },
           h('div', {}, h('label', {}, 'Default model', select),
             h('p', { class: 'muted small', text: 'Used by Qumus and every specialist set to Use default.' })),
@@ -210,6 +224,7 @@ export class ModelSettings {
           h('p', { class: 'muted small', text: 'Applies from the next plan with fresh conversation context. Finish any current work before saving.' })),
           h('div', { class: 'routing-save-actions' }, discard, apply)),
         ...(replay ? [h('p', { class: 'muted small', text: 'Return to live to change models. Recorded replies stay unchanged.' })] : []));
+      showBlocker();
       restore();
     } catch (err) {
       this.host.replaceChildren(h('p', { text: err.message }), h('button', { class: 'row-btn', text: 'Retry model list', onclick: () => this.loadModels(replay) }));

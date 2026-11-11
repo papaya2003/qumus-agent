@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Qumus v2</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2317171a'/%3E%3Ctext x='16' y='22' font-family='system-ui' font-size='17' font-weight='700' fill='white' text-anchor='middle'%3EQ%3C/text%3E%3C/svg%3E">
+<title>Qumus</title>
+<link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 <link rel="stylesheet" href="/static/style.css">
 <script>
   // apply the saved theme before first paint
@@ -34,7 +34,7 @@
 <div class="app" id="app">
   <header class="tbar">
     <div class="tb-left">
-      <div class="brand"><div class="brand-mark">Q</div>Qumus <small>v2</small></div>
+      <div class="brand"><img class="brand-mark" src="/static/logo.svg" alt="" width="24" height="24">Qumus <small>v2</small></div>
       <span class="mode" id="mode" title=""><i></i><b id="mode-k">LIVE</b><span id="mode-t">Connecting…</span></span>
       <button class="back-live" id="back-live" hidden title="Leave the recording and go back to this computer's run">Back to live<em id="back-note" hidden></em></button>
     </div>
@@ -174,7 +174,7 @@
           <button class="go-btn" id="continue-btn" hidden title="Continue: paused jobs go on from the right step; Qumus picks up its plan"><i></i></button>
           <button class="stop-btn" id="stop-btn" title="Stop (Esc): interrupt Qumus; every job pauses at its next safe point"><i></i></button>
         </div>
-        <div class="hint" id="hint">Enter to send · Shift+Enter for a new line · Esc stops · during a run Qumus reads your message after its current tool call</div>
+        <div class="hint" id="hint" title="During a run Qumus reads your message after its current tool call">Enter to send · Shift+Enter for a new line · Esc stops</div>
       </div>
     </section>
 
@@ -262,12 +262,15 @@
       </button>
     </div>
     <div class="lab-body" id="r-bench">
-      <div class="bench-wrap">
-        <svg id="bench" preserveAspectRatio="xMidYMid meet"></svg>
-        <div class="bench-legend" id="bench-legend"><b>Top view</b><button class="lnk-btn expand-bench" title="Open a larger animated bench view">Expand</button><span>world frame · mm</span></div>
-      </div>
+      <!-- three pictures only (Jialei 2026-11-11): the top view, the camera of
+           the instrument that moves, the microscope of the instrument that moves -->
+      <section class="pane pane-top" data-slot="top">
+        <header class="pane-h"><b>Top view</b><span class="pane-src" id="bench-legend">world frame · mm</span><span class="grow"></span>
+          <button class="pane-x expand-bench" title="Open a larger view that keeps updating" aria-label="Expand the top view"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
+        </header>
+        <div class="pane-b bench-wrap"><svg id="bench" preserveAspectRatio="xMidYMid meet"></svg></div>
+      </section>
       <div class="cams" id="cam"></div>
-      <div class="verify" id="verify"><div class="placeholder">No check with a measurement yet. After a placement, how far off it was shows here.</div></div>
     </div>
     <div class="scroll detail" id="r-detail" hidden></div>
   </aside>

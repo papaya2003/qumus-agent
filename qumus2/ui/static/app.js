@@ -419,7 +419,7 @@ function renderRight(force) {
   const sc = shell.scene, lay = layout(sc), box = $('r-detail');
   $('r-bench').hidden = lay.right === 'detail';
   box.hidden = lay.right !== 'detail';
-  let d = null, title = 'Bench', sub = REPLAY ? 'the lab as recorded' : 'what the lab looks like now', back = null;
+  let d = null, title = 'Bench', sub = REPLAY ? 'as recorded' : 'live', back = null;
   if (lay.right === 'cams') { title = 'Cameras'; sub = REPLAY ? 'as recorded' : 'now'; }
   if (lay.right === 'detail') {
     // typing in the details (a name for the film report): data changes wait
@@ -590,7 +590,7 @@ function renderWaiting() {
   if (el.textContent !== text) el.textContent = text;
   el.hidden = !w;
   const hint = w ? 'Qumus waits for you: do what it asks, then tell it here and it goes on'
-    : 'Enter to send · Shift+Enter for a new line · Esc stops · during a run Qumus reads your message after its current tool call';
+    : 'Enter to send · Shift+Enter for a new line · Esc stops';
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
 }
 
@@ -747,6 +747,17 @@ function renderControls() {
   const paused = runs.some(r => r.status === 'paused'), running = runs.some(r => r.status === 'running' || r.status === 'queued');
   $('continue-btn').hidden = !(S.stopped || paused);
   $('stop-btn').classList.toggle('quiet', !S.busy && !running);
+  syncComposer();
+}
+// One button in the corner like Claude's composer: Send while idle, Stop while
+// Qumus works; both while it works and something is typed (a message during a
+// run is read after the current tool call). Esc still stops at any time.
+function syncComposer() {
+  const working = !$('stop-btn').classList.contains('quiet');
+  $('stop-btn').hidden = !working;
+  $('send').hidden = working && !$('input').value.trim();
+  // with both showing, Send is the main action and Stop steps back
+  $('stop-btn').classList.toggle('secondary', working && !$('send').hidden);
 }
 
 $('stop-btn').onclick = async () => {
@@ -813,7 +824,7 @@ async function refreshBench(reconcile) {
     bench.statusOf = id => run.inv.stampStatus(id);  // stamp status for the tooltip (ledger)
     bench.stampOf = id => run.inv.samples.get(id);
     // the top-view frame takes the table's own shape (plus its legend strip), so no blank bars
-    $('bench').parentElement.style.aspectRatio = `${bench.w} / ${bench.h + 22 * bench.w / 436}`;
+    $('bench').parentElement.style.aspectRatio = `${bench.w} / ${bench.h}`;
     $('labmap-wrap').style.aspectRatio = `${bench.w} / ${bench.h}`;
     lab = new LabState(b.layout);
     lab.setAll(fromBench(b, b.layout));
@@ -979,10 +990,10 @@ async function send(text) {
   text = (text ?? input.value).trim();
   if (!text) return;
   try { await post('/api/messages', { text }); } catch { toast('Could not send'); return; }
-  input.value = ''; autosize(); sendBtn.disabled = true;
+  input.value = ''; autosize(); sendBtn.disabled = true; syncComposer();
 }
 function autosize() { input.style.height = 'auto'; input.style.height = Math.min(140, input.scrollHeight) + 'px'; }
-input.addEventListener('input', () => { autosize(); sendBtn.disabled = !input.value.trim(); });
+input.addEventListener('input', () => { autosize(); sendBtn.disabled = !input.value.trim(); syncComposer(); });
 input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
 sendBtn.onclick = () => send();
 
@@ -1247,7 +1258,7 @@ async function bootReplay() {
   document.title = `${rec.meta?.title || 'Recorded run'} · Qumus v2 replay`;
   renderMode();
   $('back-live').hidden = !S.serverLive;
-  $('bench-legend').lastElementChild.textContent = 'world frame · mm · recorded';
+  $('bench-legend').textContent = 'recorded · mm';
   $('replay-bar').hidden = false;
   // a row of the tree seeks the replay: a lab action to its start, a device command to itself
   tree.hooks.seek = key => {

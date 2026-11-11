@@ -627,10 +627,11 @@ def main() -> None:
         print('Startup blocked: select exactly one existing owner target bundle under '
               f'{WORKSPACE}/targets/<sourceSHA>/target.json.')
         raise SystemExit(2)
-    from qumus2.testbench.hallbar import load_imported_hallbar_target
+    # the testbench moved to qumus-simlab; the brain checks a bundle the same way
+    from qumus2.stations.target_bundle import validate_target_bundle
 
     try:
-        load_imported_hallbar_target(bundles[0].parent)
+        validate_target_bundle(bundles[0].parent)
     except (ValueError, OSError) as error:
         print('Startup blocked: invalid owner target bundle: ' + str(error))
         raise SystemExit(2) from None

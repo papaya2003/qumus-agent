@@ -1003,7 +1003,7 @@ function emptyState() {
     h('h3', { text: 'What should Qumus do?' }),
     h('div', { text: 'Qumus turns your request into a plan and hands the work to its team. You can write to it, Stop or Continue at any time.' }),
     h('div', { class: 'suggest' }, sugg.map(t => h('button', { text: t, onclick: () => send(t) }))),
-    h('div', { class: 'muted small empty-more', text: 'Earlier runs and the demo recordings are in History.' }));
+    h('div', { class: 'muted small empty-more', text: 'Earlier runs are in History.' }));
 }
 
 // ------------------------------------------------------------------ live link

@@ -1,10 +1,11 @@
-// History · Runs: earlier runs on this computer and the demo recordings
+// History · Runs: the current Hall-bar run (Simulated lab) and Real instruments
 // (scenario 4; the demo of scenario 5 starts here, no command line).
 //
-//   left    "This computer": every earlier `serve` of this run store that was
-//           asked something (GET /api/history; the live page only), newest
-//           first. "Demo recordings": the recordings in the repo (GET
-//           /api/recordings), simulated, never counted as experience.
+//   left    two groups. "Simulated lab": the current Hall-bar recording(s)
+//           (demoguide CURRENT), then every earlier `serve` of this run store
+//           that was asked something (GET /api/history; the live page only).
+//           Other recordings stay on disk but are listed only while selected
+//           or playing. "Real instruments": empty until real hardware runs.
 //   centre  the picked run, read-only: what it was asked and how it ended,
 //           "▶ Play recording", and its Results, Progress tree or
 //           Conversation (the same views as during the run).
@@ -15,7 +16,7 @@
 // &at=<event index>): the replay takes the whole page, with "Back to live".
 
 import { h, api, fetchRecording, fmtDur, label, linkIds, modelLabel } from './ui.js';
-import { DEMOS, DIAGNOSTICS, EARLIER } from './demoguide.js';
+import { CURRENT, DEMOS, DIAGNOSTICS } from './demoguide.js';
 import { Session, OUTCOME } from './session.js';
 import { Results } from './results.js';
 import { ProgressTree } from './tree.js';
@@ -66,7 +67,9 @@ export class HistoryView {
     if (!this.sel) {
       const cur = this.ctx.playing();
       const pick = (this.ctx.current?.() && { kind: 'current', id: 'live' }) || (cur.run && { kind: 'run', id: String(cur.run) }) || (cur.rec && { kind: 'rec', id: cur.rec })
-        || (runs && runs[0] && { kind: 'run', id: String(runs[0].id) }) || ((recs || []).find(r => r.default) && { kind: 'rec', id: recs.find(r => r.default).name });
+        || (runs && runs[0] && { kind: 'run', id: String(runs[0].id) })
+        || ((recs || []).find(r => CURRENT.has(r.name)) && { kind: 'rec', id: recs.find(r => CURRENT.has(r.name)).name })
+        || ((recs || []).find(r => r.default) && { kind: 'rec', id: recs.find(r => r.default).name });
       if (pick) this.pick(pick, true);
     }
     this.ctx.changed('all');
@@ -137,50 +140,33 @@ export class HistoryView {
       h('span', { class: 'hr-l' }, h('b', { text: title }), extra || null, outcome ? tag(outcome) : null),
       h('small', { text: facts.filter(Boolean).join(' · ') }),
       this.key(it) === playing ? h('span', { class: 'hr-now', text: '▶ playing now' }) : null);
+    // Two groups (owner, 2026-11-06): the simulated lab and real instruments.
+    // The simulated group lists only the current Hall-bar recording(s), the
+    // runs on this computer and whatever is selected or playing; other
+    // recordings stay on disk but are not listed.
+    rows.push(h('div', { class: 'sec-t', text: 'Simulated lab' }));
     if (this.ctx.current?.()) rows.push(row({ kind: 'current', id: 'live' }, 'Current run', ['Live context']));
-    if (this.runs) {
-      rows.push(h('div', { class: 'sec-t', text: `This computer · ${this.runs.length}` }));
-      if (!this.runs.length) rows.push(h('div', { class: 'placeholder', text: 'No earlier run yet. Each time Qumus is started and asked something, the run lists here.' }));
-      for (const r of this.runs) {
-        rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
-          r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
-      }
-    }
     const recs = this.recs || [];
-    rows.push(h('div', { class: 'sec-t', text: `Demo recordings · ${recs.length} · simulated` }));
-    rows.push(h('p', { class: 'demo-guide small', text: 'Virtual-bench evidence · free, read-only playback.' }));
-    if (!recs.length) rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No recordings found.' : 'Loading…' }));
     const demoRow = r => {
-      // the request is the same in many recordings: the row names what happens in it
-      const what = shortTitle(r), task = String(r.title || '').split(':')[0].replace(/\(.*?\)\s*$/, '').trim();
-      const diagnostic = DIAGNOSTICS[r.name] && r.agents === 'scripted' && !r.models?.length;
-      const guide = diagnostic ? DIAGNOSTICS[r.name] : DEMOS[r.name];
-      const el = row({ kind: 'rec', id: r.name }, guide?.[0] || (what ? what.replace(/^./, c => c.toUpperCase()) : task || r.request || r.name),
+      const guide = DEMOS[r.name];
+      const title = guide?.[0] || String(r.title || '').replace(/\(.*?\)\s*$/, '').trim() || r.request || r.name;
+      const el = row({ kind: 'rec', id: r.name }, title,
         [r.agents === 'sdk' ? `Recorded ${modelLabel(r)}` : 'Scripted', r.agents !== 'sdk' && r.lab_s > 0 ? `${fmtDur(r.lab_s)} lab time` : r.duration_s ? fmtDur(r.duration_s) : null],
-        diagnostic ? null : r.outcome, diagnostic ? h('span', { class: 'tag warn', text: 'Failed diagnostic' }) : null);
-      if (guide) el.append(h('span', { class: 'demo-purpose', text: guide[1] }));
+        DIAGNOSTICS[r.name] ? null : r.outcome);
+      if (guide && this.key(this.sel) === `rec:${r.name}`) el.append(h('span', { class: 'demo-purpose', text: guide[1] }));
       return el;
     };
-    const diagnostics = recs.filter(r => DIAGNOSTICS[r.name] && r.agents === 'scripted' && !r.models?.length);
-    if (diagnostics.length) rows.push(h('div', { class: 'sec-t', text: 'This round · diagnostic evidence' }),
-      h('p', { class: 'small muted', text: 'Supplied target → sources → outcome → optical illustration.' }),
-      ...diagnostics.map(demoRow));
-    rows.push(h('div', { class: 'sec-t', text: 'Latest Hall-bar recordings' }));
-    const currentDemos = recs.filter(r => DEMOS[r.name]?.[2]);
-    rows.push(...currentDemos.map(demoRow));
-    if (!currentDemos.length) rows.push(h('p', { class: 'small muted', text: 'No current Hall-bar recording in this folder.' }));
-    const others = recs.filter(r => !DEMOS[r.name]?.[2] && !diagnostics.includes(r) && !EARLIER.has(r.name));
-    const more = h('details', { class: 'demo-more', open: this.moreOpen || others.some(r => this.sel?.id === r.name) },
-      h('summary', { text: `Historical recordings · ${others.length}` }), ...others.map(demoRow));
-    more.addEventListener('toggle', () => { this.moreOpen = more.open; });
-    rows.push(more);
-    const earlier = recs.filter(r => EARLIER.has(r.name) && !DEMOS[r.name]?.[2] && !diagnostics.includes(r));
-    if (earlier.length) {
-      const old = h('details', { class: 'demo-more', open: this.earlierOpen || earlier.some(r => this.sel?.id === r.name) },
-        h('summary', { text: `October 2026 · earlier workflow · ${earlier.length}` }), ...earlier.map(demoRow));
-      old.addEventListener('toggle', () => { this.earlierOpen = old.open; });
-      rows.push(old);
+    const shown = recs.filter(r => CURRENT.has(r.name) || this.key(this.sel) === `rec:${r.name}` || this.key(this.playingItem()) === `rec:${r.name}`);
+    rows.push(...shown.map(demoRow));
+    for (const r of this.runs || []) {
+      rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
+        r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
     }
+    if (!shown.length && !(this.runs || []).length && !this.ctx.current?.()) {
+      rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No Hall-bar run yet.' : 'Loading…' }));
+    }
+    rows.push(h('div', { class: 'sec-t', text: 'Real instruments' }));
+    rows.push(h('div', { class: 'placeholder', text: 'No run on real instruments yet.' }));
     const keep = box.scrollTop;
     box.replaceChildren(...rows);
     box.scrollTop = keep;

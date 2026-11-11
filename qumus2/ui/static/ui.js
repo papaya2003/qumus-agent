@@ -47,7 +47,7 @@ export const ROLES = { orchestrator: 'Plans and leads', advisor: 'Device Guidanc
   picker: 'Chooses flakes', designer: 'Draws the layout', reactor: 'Controls the virtual reactor' };
 export const label = a => LABELS[a] || a || 'System';
 export const avatar = (a, active) => h('span', { class: 'ag' + (active ? ' active' : ''), dataset: { a: a || 'system' },
-  title: label(a), text: MONO[a] || (a || '?')[0].toUpperCase() });
+  title: label(a), text: a === 'orchestrator' ? '' : MONO[a] || (a || '?')[0].toUpperCase() });
 
 export const FLOW_LABELS = { place_chip_on_transfer_stage: 'Place chip on the stage', exfoliate_chips: 'Exfoliate onto chips',
   search_chip: 'Search a chip for flakes', revisit_chip: 'Revisit flakes on a chip', stack_device: 'Stack a device',

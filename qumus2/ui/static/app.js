@@ -1005,6 +1005,7 @@ sendBtn.onclick = () => send();
 function emptyState() {
   const sugg = ['Place a chip on the transfer stage', 'Get me a graphene flake', 'Make a graphene device'];
   return h('div', { class: 'empty' },
+    h('img', { class: 'empty-mark', src: '/static/logo.svg', alt: '', width: 44, height: 44 }),
     h('h3', { text: 'What should Qumus do?' }),
     h('div', { text: 'Qumus turns your request into a plan and hands the work to its team. You can write to it, Stop or Continue at any time.' }),
     h('div', { class: 'suggest' }, sugg.map(t => h('button', { text: t, onclick: () => send(t) }))),

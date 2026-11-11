@@ -618,6 +618,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transition: border-color .2s, box-shadow .2s;
 }
 .pane-top { flex: 0 1 auto; }
+.cam-pane { container-type: inline-size; }
+/* a narrow column keeps the title, the source and Expand; the photo note gives way */
+@container (max-width: 400px) { .cam-pane .pane-notes { display: none; } }
 .cam-pane[data-slot="camera"] { flex: 1 1 0; min-height: 120px; }
 .cam-pane[data-slot="microscope"] { flex: 1.5 1 0; min-height: 150px; }
 .pane-h {

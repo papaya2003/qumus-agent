@@ -171,7 +171,8 @@ const modelSettings = new ModelSettings($('model-settings'), $('billing-settings
 const nowCap = h('span', { class: 'bc-text', id: 'bc-text' });  // a replay's lab action, in the title bar
 
 function layout(scene) {
-  if (scene === 'results') return { centre: 'v-results', right: 'detail' };
+  // nothing picked in Results: the right column shows the bench instead of an empty box
+  if (scene === 'results') return { centre: 'v-results', right: results.sel ? 'detail' : 'bench' };
   if (scene === 'lab') return labTab === 'status' && labv.category?.t === 'overview'
     ? { centre: 'v-lab', right: labv.sel ? 'detail' : 'cams' } : { centre: 'v-stock', right: 'detail' };
   if (scene === 'history') return { centre: histTab === 'runs' ? 'v-history' : 'v-xp', right: 'detail' };
@@ -431,7 +432,11 @@ function renderRight(force) {
       if (labv.category?.t === 'overview' && labTab === 'status') back = { text: '← Cameras', fn: () => { labv.sel = null; sceneDirty(true); } };
     } else if (sc === 'history') {
       d = histTab === 'runs' ? hist.detail(dctx(run)) : xp.detail();
-      d = d || { title: histTab === 'runs' ? 'Key moments' : 'Where it came from', sub: '', node: h('div', { class: 'placeholder', text: histTab === 'runs' ? 'Pick a run on the left.' : 'Click an entry for where it came from and its votes.' }) };
+      const current = histTab === 'runs' && hist.sel?.kind === 'current';
+      d = d || { title: histTab === 'runs' ? 'Key moments' : 'Where it came from', sub: '', node: current
+        ? h('div', { class: 'placeholder' }, 'The current run goes on in Progress; its plan, jobs and checks are there. ',
+          h('button', { class: 'lnk-btn', text: 'Open Progress', onclick: () => shell.open('progress', 'centre') }))
+        : h('div', { class: 'placeholder', text: histTab === 'runs' ? 'Pick a run on the left.' : 'Click an entry for where it came from and its votes.' }) };
     } else if (progressDetail) {
       d = progressItem(progressDetail);
       back = { text: '← Bench', fn: () => { progressDetail = null; shell.render(); renderRight(true); } };

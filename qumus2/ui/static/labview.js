@@ -110,7 +110,9 @@ export class LabView {
     this.ctx = ctx;
     this.tab = 'status';
     this.sel = null;          // { t: 'inst' | 'supply' | 'sample', id }
-    this.category = null;     // Status folder; selection is always an item inside it
+    // Status folder; selection is always an item inside it. Lab opens on the
+    // bench overview instead of an empty middle column (2026-11-11).
+    this.category = { t: 'overview', id: 'bench' };
     this.cat = 'all';         // Stock: the category on the left
     this.query = '';
     this.mat = null;
@@ -125,7 +127,7 @@ export class LabView {
     });
   }
 
-  reset() { this.sel = null; this.category = null; }
+  reset() { this.sel = null; this.category = { t: 'overview', id: 'bench' }; }
   setTab(t) { if (t !== this.tab) { this.tab = t; this.sel = null; } this.ctx.changed('all'); }
   select(item) {
     if (item.t === 'inst' || item.t === 'supply') { this.selectCategory(item); return; }

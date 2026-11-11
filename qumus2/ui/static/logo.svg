@@ -1,60 +1,60 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Qumus">
 <defs>
-<radialGradient id="r14bg" cx=".42" cy=".38" r=".8"><stop offset="0" stop-color="#1d3a8a"/><stop offset=".55" stop-color="#0f1a4a"/><stop offset="1" stop-color="#060a22"/></radialGradient>
-<radialGradient id="r14fade" cx="0.45" cy="0.49" r=".6"><stop offset=".25" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-<mask id="r14fm"><rect width="32" height="32" fill="url(#r14fade)"/></mask>
-<radialGradient id="r14atom" cx=".36" cy=".32" r=".72"><stop offset="0" stop-color="#ffffff"/><stop offset=".18" stop-color="#c9fbff"/><stop offset=".5" stop-color="#46d6e6"/><stop offset=".85" stop-color="#11768f"/><stop offset="1" stop-color="#0a3d5c"/></radialGradient>
-<radialGradient id="r14atomw" cx=".36" cy=".32" r=".72"><stop offset="0" stop-color="#ffffff"/><stop offset=".3" stop-color="#eef3ff"/><stop offset=".75" stop-color="#9fb2e6"/><stop offset="1" stop-color="#4b5c9c"/></radialGradient>
-<radialGradient id="r14sheen" cx=".3" cy=".1" r=".9"><stop offset="0" stop-color="#9fd8ff" stop-opacity=".28"/><stop offset=".6" stop-color="#9fd8ff" stop-opacity="0"/></radialGradient>
-<filter id="r14glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.1"/></filter>
-<filter id="r14soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".35"/></filter>
-<clipPath id="r14c"><rect width="32" height="32" rx="7.5"/></clipPath>
+<radialGradient id="r20bg" cx=".42" cy=".38" r=".8"><stop offset="0" stop-color="#1d3a8a"/><stop offset=".55" stop-color="#0f1a4a"/><stop offset="1" stop-color="#060a22"/></radialGradient>
+<radialGradient id="r20fade" cx="0.47" cy="0.49" r=".6"><stop offset=".25" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<mask id="r20fm"><rect width="32" height="32" fill="url(#r20fade)"/></mask>
+<radialGradient id="r20atom" cx=".36" cy=".32" r=".72"><stop offset="0" stop-color="#ffffff"/><stop offset=".18" stop-color="#c9fbff"/><stop offset=".5" stop-color="#46d6e6"/><stop offset=".85" stop-color="#11768f"/><stop offset="1" stop-color="#0a3d5c"/></radialGradient>
+<radialGradient id="r20atomw" cx=".36" cy=".32" r=".72"><stop offset="0" stop-color="#ffffff"/><stop offset=".3" stop-color="#eef3ff"/><stop offset=".75" stop-color="#9fb2e6"/><stop offset="1" stop-color="#4b5c9c"/></radialGradient>
+<radialGradient id="r20sheen" cx=".3" cy=".1" r=".9"><stop offset="0" stop-color="#9fd8ff" stop-opacity=".28"/><stop offset=".6" stop-color="#9fd8ff" stop-opacity="0"/></radialGradient>
+<filter id="r20glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.1"/></filter>
+<filter id="r20soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".35"/></filter>
+<clipPath id="r20c"><rect width="32" height="32" rx="7.5"/></clipPath>
 </defs>
-<g clip-path="url(#r14c)">
-<rect width="32" height="32" fill="url(#r14bg)"/>
-<g mask="url(#r14fm)">
-<path d="M25.03,27.9L30.31,30.95M-1.39,30.95L-1.39,37.05M25.03,9.6L30.31,12.65M-1.39,12.65L-1.39,18.75M3.89,3.5L3.89,9.6M9.18,12.65L14.46,9.6M25.03,21.8L30.31,18.75M30.31,12.65L30.31,18.75M-1.39,-5.65L-1.39,0.45M19.74,18.75L25.03,21.8M25.03,3.5L30.31,0.45M19.74,30.95L25.03,27.9M19.74,0.45L25.03,3.5M14.46,21.8L14.46,27.9M19.74,-5.65L19.74,0.45M9.18,30.95L9.18,37.05M30.31,18.75L35.59,21.8M30.31,-5.65L30.31,0.45M30.31,30.95L30.31,37.05M14.46,3.5L14.46,9.6M30.31,0.45L35.59,3.5M3.89,9.6L9.18,12.65M25.03,21.8L25.03,27.9M-1.39,18.75L3.89,21.8M19.74,12.65L25.03,9.6M-1.39,30.95L3.89,27.9M9.18,-5.65L9.18,0.45M3.89,3.5L9.18,0.45M35.59,21.8L35.59,27.9M-1.39,0.45L3.89,3.5M-1.39,12.65L3.89,9.6M14.46,9.6L19.74,12.65M3.89,21.8L3.89,27.9M3.89,21.8L9.18,18.75M14.46,21.8L19.74,18.75M9.18,12.65L9.18,18.75M30.31,30.95L35.59,27.9M14.46,3.5L19.74,0.45M9.18,30.95L14.46,27.9M19.74,30.95L19.74,37.05M14.46,27.9L19.74,30.95M25.03,3.5L25.03,9.6M9.18,0.45L14.46,3.5M35.59,3.5L35.59,9.6M3.89,27.9L9.18,30.95M30.31,12.65L35.59,9.6M19.74,12.65L19.74,18.75M9.18,18.75L14.46,21.8" stroke="#4fd1ff" stroke-opacity=".35" stroke-width=".9" filter="url(#r14soft)" fill="none"/>
-<path d="M25.03,27.9L30.31,30.95M-1.39,30.95L-1.39,37.05M25.03,9.6L30.31,12.65M-1.39,12.65L-1.39,18.75M3.89,3.5L3.89,9.6M9.18,12.65L14.46,9.6M25.03,21.8L30.31,18.75M30.31,12.65L30.31,18.75M-1.39,-5.65L-1.39,0.45M19.74,18.75L25.03,21.8M25.03,3.5L30.31,0.45M19.74,30.95L25.03,27.9M19.74,0.45L25.03,3.5M14.46,21.8L14.46,27.9M19.74,-5.65L19.74,0.45M9.18,30.95L9.18,37.05M30.31,18.75L35.59,21.8M30.31,-5.65L30.31,0.45M30.31,30.95L30.31,37.05M14.46,3.5L14.46,9.6M30.31,0.45L35.59,3.5M3.89,9.6L9.18,12.65M25.03,21.8L25.03,27.9M-1.39,18.75L3.89,21.8M19.74,12.65L25.03,9.6M-1.39,30.95L3.89,27.9M9.18,-5.65L9.18,0.45M3.89,3.5L9.18,0.45M35.59,21.8L35.59,27.9M-1.39,0.45L3.89,3.5M-1.39,12.65L3.89,9.6M14.46,9.6L19.74,12.65M3.89,21.8L3.89,27.9M3.89,21.8L9.18,18.75M14.46,21.8L19.74,18.75M9.18,12.65L9.18,18.75M30.31,30.95L35.59,27.9M14.46,3.5L19.74,0.45M9.18,30.95L14.46,27.9M19.74,30.95L19.74,37.05M14.46,27.9L19.74,30.95M25.03,3.5L25.03,9.6M9.18,0.45L14.46,3.5M35.59,3.5L35.59,9.6M3.89,27.9L9.18,30.95M30.31,12.65L35.59,9.6M19.74,12.65L19.74,18.75M9.18,18.75L14.46,21.8" stroke="#9fe6ff" stroke-opacity=".22" stroke-width=".35" fill="none"/>
-<circle cx="25.03" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="14.46" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="19.74" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="9.18" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="19.74" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="-1.39" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="-1.39" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="3.89" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="25.03" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="14.46" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="14.46" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="9.18" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="9.18" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="30.31" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="-1.39" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="30.31" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="3.89" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="19.74" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="3.89" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="25.03" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="19.74" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="25.03" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="14.46" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="9.18" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="30.31" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="-1.39" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="30.31" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
-<circle cx="3.89" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<g clip-path="url(#r20c)">
+<rect width="32" height="32" fill="url(#r20bg)"/>
+<g mask="url(#r20fm)">
+<path d="M25.63,27.9L30.91,30.95M-0.79,30.95L-0.79,37.05M25.63,9.6L30.91,12.65M-0.79,12.65L-0.79,18.75M4.49,3.5L4.49,9.6M9.78,12.65L15.06,9.6M25.63,21.8L30.91,18.75M30.91,12.65L30.91,18.75M-0.79,-5.65L-0.79,0.45M20.34,18.75L25.63,21.8M25.63,3.5L30.91,0.45M20.34,30.95L25.63,27.9M20.34,0.45L25.63,3.5M15.06,21.8L15.06,27.9M20.34,-5.65L20.34,0.45M9.78,30.95L9.78,37.05M30.91,18.75L36.19,21.8M30.91,-5.65L30.91,0.45M30.91,30.95L30.91,37.05M15.06,3.5L15.06,9.6M30.91,0.45L36.19,3.5M4.49,9.6L9.78,12.65M25.63,21.8L25.63,27.9M-0.79,18.75L4.49,21.8M20.34,12.65L25.63,9.6M-0.79,30.95L4.49,27.9M9.78,-5.65L9.78,0.45M4.49,3.5L9.78,0.45M36.19,21.8L36.19,27.9M-0.79,0.45L4.49,3.5M-0.79,12.65L4.49,9.6M15.06,9.6L20.34,12.65M4.49,21.8L4.49,27.9M4.49,21.8L9.78,18.75M15.06,21.8L20.34,18.75M9.78,12.65L9.78,18.75M30.91,30.95L36.19,27.9M15.06,3.5L20.34,0.45M9.78,30.95L15.06,27.9M20.34,30.95L20.34,37.05M15.06,27.9L20.34,30.95M25.63,3.5L25.63,9.6M9.78,0.45L15.06,3.5M36.19,3.5L36.19,9.6M4.49,27.9L9.78,30.95M30.91,12.65L36.19,9.6M20.34,12.65L20.34,18.75M9.78,18.75L15.06,21.8" stroke="#4fd1ff" stroke-opacity=".35" stroke-width=".9" filter="url(#r20soft)" fill="none"/>
+<path d="M25.63,27.9L30.91,30.95M-0.79,30.95L-0.79,37.05M25.63,9.6L30.91,12.65M-0.79,12.65L-0.79,18.75M4.49,3.5L4.49,9.6M9.78,12.65L15.06,9.6M25.63,21.8L30.91,18.75M30.91,12.65L30.91,18.75M-0.79,-5.65L-0.79,0.45M20.34,18.75L25.63,21.8M25.63,3.5L30.91,0.45M20.34,30.95L25.63,27.9M20.34,0.45L25.63,3.5M15.06,21.8L15.06,27.9M20.34,-5.65L20.34,0.45M9.78,30.95L9.78,37.05M30.91,18.75L36.19,21.8M30.91,-5.65L30.91,0.45M30.91,30.95L30.91,37.05M15.06,3.5L15.06,9.6M30.91,0.45L36.19,3.5M4.49,9.6L9.78,12.65M25.63,21.8L25.63,27.9M-0.79,18.75L4.49,21.8M20.34,12.65L25.63,9.6M-0.79,30.95L4.49,27.9M9.78,-5.65L9.78,0.45M4.49,3.5L9.78,0.45M36.19,21.8L36.19,27.9M-0.79,0.45L4.49,3.5M-0.79,12.65L4.49,9.6M15.06,9.6L20.34,12.65M4.49,21.8L4.49,27.9M4.49,21.8L9.78,18.75M15.06,21.8L20.34,18.75M9.78,12.65L9.78,18.75M30.91,30.95L36.19,27.9M15.06,3.5L20.34,0.45M9.78,30.95L15.06,27.9M20.34,30.95L20.34,37.05M15.06,27.9L20.34,30.95M25.63,3.5L25.63,9.6M9.78,0.45L15.06,3.5M36.19,3.5L36.19,9.6M4.49,27.9L9.78,30.95M30.91,12.65L36.19,9.6M20.34,12.65L20.34,18.75M9.78,18.75L15.06,21.8" stroke="#9fe6ff" stroke-opacity=".22" stroke-width=".35" fill="none"/>
+<circle cx="25.63" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="15.06" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="20.34" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="9.78" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="20.34" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="-0.79" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="-0.79" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="4.49" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="25.63" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="15.06" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="15.06" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="9.78" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="9.78" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="30.91" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="-0.79" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="30.91" cy="30.95" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="4.49" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="20.34" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="4.49" cy="9.6" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="25.63" cy="3.5" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="20.34" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="25.63" cy="27.9" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="15.06" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="9.78" cy="18.75" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="30.91" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="-0.79" cy="0.45" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="30.91" cy="12.65" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
+<circle cx="4.49" cy="21.8" r=".55" fill="#7fe8ff" fill-opacity=".45"/>
 </g>
-<path d="M14.46,9.6L19.74,12.65L19.74,18.75L14.46,21.8L9.18,18.75L9.18,12.65Z M19.74,18.75L25.03,21.8" stroke="#38e1ff" stroke-opacity=".75" stroke-width="3.6" fill="none" stroke-linejoin="round" stroke-linecap="round" filter="url(#r14glow)"/>
-<path d="M14.46,9.6L19.74,12.65L19.74,18.75L14.46,21.8L9.18,18.75L9.18,12.65Z M19.74,18.75L25.03,21.8" stroke="#7d8fc8" stroke-width="2.3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="M14.46,9.6L19.74,12.65L19.74,18.75L14.46,21.8L9.18,18.75L9.18,12.65Z M19.74,18.75L25.03,21.8" stroke="#e9efff" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round" transform="translate(-.18 -.22)"/>
-<path d="M14.46,9.6L19.74,12.65L19.74,18.75L14.46,21.8L9.18,18.75L9.18,12.65Z M19.74,18.75L25.03,21.8" stroke="#fff" stroke-width=".55" fill="none" stroke-linejoin="round" stroke-linecap="round" transform="translate(-.38 -.45)" stroke-opacity=".9"/>
-<circle cx="14.46" cy="9.6" r="1.75" fill="url(#r14atomw)"/>
-<circle cx="19.74" cy="12.65" r="1.75" fill="url(#r14atom)"/>
-<circle cx="19.74" cy="18.75" r="1.75" fill="url(#r14atomw)"/>
-<circle cx="14.46" cy="21.8" r="1.75" fill="url(#r14atom)"/>
-<circle cx="9.18" cy="18.75" r="1.75" fill="url(#r14atomw)"/>
-<circle cx="9.18" cy="12.65" r="1.75" fill="url(#r14atom)"/>
-<circle cx="25.03" cy="21.8" r="3.4" fill="#38e1ff" fill-opacity=".55" filter="url(#r14glow)"/>
-<circle cx="25.03" cy="21.8" r="2.35" fill="url(#r14atom)"/>
-<rect width="32" height="32" fill="url(#r14sheen)"/></g>
+<path d="M15.06,9.6L20.34,12.65L20.34,18.75L15.06,21.8L9.78,18.75L9.78,12.65Z M20.34,18.75L25.63,21.8" stroke="#38e1ff" stroke-opacity=".75" stroke-width="3.6" fill="none" stroke-linejoin="round" stroke-linecap="round" filter="url(#r20glow)"/>
+<path d="M15.06,9.6L20.34,12.65L20.34,18.75L15.06,21.8L9.78,18.75L9.78,12.65Z M20.34,18.75L25.63,21.8" stroke="#7d8fc8" stroke-width="2.3" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M15.06,9.6L20.34,12.65L20.34,18.75L15.06,21.8L9.78,18.75L9.78,12.65Z M20.34,18.75L25.63,21.8" stroke="#e9efff" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round" transform="translate(-.18 -.22)"/>
+<path d="M15.06,9.6L20.34,12.65L20.34,18.75L15.06,21.8L9.78,18.75L9.78,12.65Z M20.34,18.75L25.63,21.8" stroke="#fff" stroke-width=".55" fill="none" stroke-linejoin="round" stroke-linecap="round" transform="translate(-.38 -.45)" stroke-opacity=".9"/>
+<circle cx="15.06" cy="9.6" r="1.75" fill="url(#r20atomw)"/>
+<circle cx="20.34" cy="12.65" r="1.75" fill="url(#r20atom)"/>
+<circle cx="20.34" cy="18.75" r="1.75" fill="url(#r20atomw)"/>
+<circle cx="15.06" cy="21.8" r="1.75" fill="url(#r20atom)"/>
+<circle cx="9.78" cy="18.75" r="1.75" fill="url(#r20atomw)"/>
+<circle cx="9.78" cy="12.65" r="1.75" fill="url(#r20atom)"/>
+<circle cx="25.63" cy="21.8" r="3.4" fill="#38e1ff" fill-opacity=".55" filter="url(#r20glow)"/>
+<circle cx="25.63" cy="21.8" r="2.35" fill="url(#r20atom)"/>
+<rect width="32" height="32" fill="url(#r20sheen)"/></g>
 <rect x=".15" y=".15" width="31.7" height="31.7" rx="7.35" fill="none" stroke="#9fd8ff" stroke-opacity=".28" stroke-width=".3"/></svg>

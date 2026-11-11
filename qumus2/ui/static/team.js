@@ -49,9 +49,12 @@ export class TeamGraph {
     const g = svg('g', { class: 't-node', 'data-a': a, transform: `translate(${x} ${y})`, tabindex: 0 }, parent);
     const tip = svg('title', {}, g);
     svg('circle', { r: r + 4.5, class: 't-ring' }, g);
-    svg('circle', { r, class: 't-disc' }, g);
-    const t = svg('text', { class: 't-mono', 'text-anchor': 'middle', y: 3.6 }, g);
-    t.textContent = a === 'orchestrator' ? 'Q' : label(a)[0];
+    if (a === 'orchestrator') {   // the lead wears the Qumus mark
+      svg('image', { href: '/static/logo.svg', class: 't-logo', x: -r, y: -r, width: 2 * r, height: 2 * r }, g);
+    } else {
+      svg('circle', { r, class: 't-disc' }, g);
+      svg('text', { class: 't-mono', 'text-anchor': 'middle', y: 3.6 }, g).textContent = label(a)[0];
+    }
     const name = svg('text', { class: 't-name' + (a === 'orchestrator' ? ' lead' : ''),
       'text-anchor': a === 'orchestrator' ? 'start' : 'middle', x: a === 'orchestrator' ? r + 8 : 0, y: a === 'orchestrator' ? 4 : r + 13.5 }, g);
     name.textContent = label(a);

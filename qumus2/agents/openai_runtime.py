@@ -508,6 +508,17 @@ class OpenAIRuntime:
             return None
         return 'configured' if model in self._context_overrides else self._context_default_sources.get(model)
 
+    def model_switch_blocker(self) -> str | None:
+        """Why a model cannot be chosen now (the same rule select_model enforces), or None."""
+        if self.busy or self.store.pending_instructions() or any(
+                r['status'] in ('queued', 'running', 'paused', 'waiting_human', 'parked')
+                for r in self.store.list_runs()):
+            return 'Finish the current work and pending instructions before switching models.'
+        if any(step.get('status') not in ('done', 'skipped')
+               for step in (self._project() or {}).get('plan', [])):
+            return 'Finish or resolve the current Task Plan before switching models.'
+        return None
+
     def model_settings(self) -> dict[str, Any]:
         c = self.creds
         return {'model': c.model_id, 'input_price': c.input_price, 'output_price': c.output_price,
@@ -519,7 +530,8 @@ class OpenAIRuntime:
                 'context_limit_sources': {model: self._context_limit_source(model) for model in self._context_limits},
                 'agent_models': {role: value.copy() for role, value in self._agent_models.items()},
                 'effective_models': {role: self.agent_model(role) for role in (ORCHESTRATOR, *SUBAGENTS)},
-                'api': c.api, 'busy': self.busy, 'budget_usd': self.run_budget_usd or c.test_budget_usd}
+                'api': c.api, 'busy': self.busy, 'budget_usd': self.run_budget_usd or c.test_budget_usd,
+                'switch_blocked': self.model_switch_blocker()}
 
     def agent_model(self, role: str) -> dict[str, Any]:
         """Resolve one role's model, rates and deployment capacity together."""
@@ -536,13 +548,9 @@ class OpenAIRuntime:
                            context_window_tokens: Any = UNSET, cached_input_price: Any = UNSET,
                            agent_models: Any = UNSET) -> None:
         """Change the next turn only; retain all spend, lab state and saved events."""
-        if self.busy or self.store.pending_instructions() or any(
-                r['status'] in ('queued', 'running', 'paused', 'waiting_human', 'parked')
-                for r in self.store.list_runs()):
-            raise ValueError('Finish the current work and pending instructions before switching models.')
-        if any(step.get('status') not in ('done', 'skipped')
-               for step in (self._project() or {}).get('plan', [])):
-            raise ValueError('Finish or resolve the current Task Plan before switching models.')
+        blocker = self.model_switch_blocker()
+        if blocker:
+            raise ValueError(blocker)
         limit = (self._context_limits.get(model) if context_window_tokens is UNSET else context_window_tokens)
         if cached_input_price is UNSET:
             same_tariff = (model, input_price, output_price) == (

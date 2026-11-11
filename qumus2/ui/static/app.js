@@ -1155,7 +1155,10 @@ function replayProgress() {
   $('rp-play').setAttribute('aria-label', R.paused ? 'Play' : 'Pause');
   document.querySelectorAll('#rp-speed button').forEach(b => b.classList.toggle('on', +b.dataset.s === R.speed));
   $('conn-dot').className = 'dot ' + (R.paused ? 'paused' : 'replay');
-  $('conn-text').textContent = R.ended ? 'Replay finished' : R.paused ? 'Replay paused' : 'Replaying';
+  // a stand-alone recording page has no Qumus behind it: say so where the link state is
+  $('conn-text').textContent = (R.ended ? 'Replay finished' : R.paused ? 'Replay paused' : 'Replaying')
+    + (S.serverLive ? '' : ' · recording only');
+  if (!S.serverLive) $('link-state').title = 'This page only plays a recording and is not connected to a running Qumus: no model calls, no live run to go back to. Start Qumus with Start Qumus on the desktop to work live.';
 }
 
 let autoplay = null;  // the first visit starts playing after a moment, unless the user acts first

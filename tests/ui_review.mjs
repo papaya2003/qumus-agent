@@ -404,3 +404,34 @@ test('v5 refused obligation edits recover only after the unchanged linked job co
     assert.ok(ids.every(id => !t.issues.get(id).resolved), variant);
   }
 });
+
+test('a refused selection-blocked report recovers only when the same step completes with a selection for that role', () => {
+  const plan = [{id: 's6', owner: 'picker', status: 'running', title: 'Select flakes'}];
+  const run = variant => {
+    const s = new Session();
+    s.add(event(1, 'plan.updated', {project_id: 'p', revision: 4, plan}));
+    s.add(event(2, 'agent.delegate', {to: 'picker', task: 's6: select flakes', tool_use_id: 'd1'}, 'orchestrator'));
+    s.add(event(3, 'tool.call', {tool: 'report_selection_blocked', tool_use_id: 'b1',
+      args: {role: 'top_hbn', action: 'relink_or_capture_optical_images', reason: 'images omitted'}}, 'picker'));
+    s.add(event(4, 'tool.result', {tool: 'report_selection_blocked', tool_use_id: 'b1', status: 'error',
+      summary: 'all candidates have images; this is not an image problem'}, 'picker'));
+    s.add(event(5, 'agent.delegation_checked', {to: 'picker', step: 's6', ok: false, status: 'pending',
+      facts: ['no submit_flake_selection was accepted.']}, 'orchestrator'));
+    // stopped before its check and resumed from a save point: never checked
+    s.add(event(6, 'agent.delegate', {to: 'picker', task: 's6: select flakes again', tool_use_id: 'd2'}, 'orchestrator'));
+    s.add(event(6.5, 'agent.delegate', {to: 'picker', task: 's6: select flakes after resume', tool_use_id: 'd3'}, 'orchestrator'));
+    const role = variant === 'other-role' ? 'channel' : 'top_hbn';
+    s.add(event(7, 'tool.call', {tool: 'submit_flake_selection', tool_use_id: 'x1',
+      args: {selected_by_role: {[role]: ['chip_001_f002']}}}, 'picker'));
+    s.add(event(8, 'tool.result', {tool: 'submit_flake_selection', tool_use_id: 'x1',
+      status: variant === 'refused' ? 'error' : 'ok', summary: 'selection accepted'}, 'picker'));
+    s.add(event(9, 'agent.delegation_checked', {to: 'picker', step: variant === 'other-step' ? 's7' : 's6',
+      ok: true, status: 'done', facts: ['submit_flake_selection: selection accepted.']}, 'orchestrator'));
+    return s.log.problems.find(p => p.id === 4);
+  };
+  const fixed = run('normal');
+  assert.match(fixed.resolved, /accepted flake selection/);
+  assert.equal(fixed.parts[0].id, 4, 'the refusal stays the first part');
+  assert.ok(fixed.parts.some(part => part.id === 8) && fixed.parts.some(part => part.id === 9));
+  for (const variant of ['other-role', 'other-step', 'refused']) assert.ok(!run(variant).resolved, variant);
+});

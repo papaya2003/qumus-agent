@@ -54,7 +54,8 @@ export class ToolAttempts {
     // identical plan. Different plans/notes remain different attempts.
     const scopeArgs = p.tool === 'update_plan' ? Object.fromEntries(Object.entries(args).filter(([k]) => k !== 'expected_version')) : args;
     const active = [...this.delegations.values()].filter(d => d.project === this.project && d.role === e.agent);
-    return { scope: `${e.agent}|${step?.id || 'unplanned'}|${p.tool}|${stable(Object.keys(target).length ? target : scopeArgs)}`,
+    return { step: step?.id || null,
+      scope: `${e.agent}|${step?.id || 'unplanned'}|${p.tool}|${stable(Object.keys(target).length ? target : scopeArgs)}`,
       // the same agent calling the same tool for the same plan step, whatever the arguments
       stepTool: `${this.project}|${e.agent}|${step?.id || 'unplanned'}|${p.tool}`,
       task: e.agent && step ? stable([this.project, this.revision, e.agent, step.id, p.tool]) : null,
@@ -88,7 +89,7 @@ export class ToolAttempts {
       const step = this.plan.find(s => s.id === taskStep(p.task) && s.owner === p.to);
       if (this.project && step) this.delegations.set(p.tool_use_id || e.id,
         {event: e, project: this.project, step: step.id, role: p.to, operation: step.operation,
-          contract: completionContract(step), reads: []});
+          contract: completionContract(step), reads: [], selections: []});
       for (const issue of this.issues.values()) {
         const prior = issue.event.payload;
         if (!issue.resolved && prior.tool === 'delegate' && prior.args?.to === p.to
@@ -121,6 +122,19 @@ export class ToolAttempts {
             if (links.length === 1) resolve(issue, e,
               'the unchanged physical obligation completed with its linked successful job; rejected edit retained',
               [d.event, links[0], this.jobs.get(links[0].run_id), e]);
+          }
+          // A refused selection-blocked report (e.g. "all candidates have
+          // images") is recovered when the same picker step later completes
+          // with an accepted selection that fills that role: the claimed
+          // blocker did not hold. The refusal itself stays on record.
+          if (prior.tool === 'report_selection_blocked' && issue.event.agent === d.role
+            && (issue.call.delegation?.step || issue.call.step) === d.step
+            && (p.facts || []).some(f => f.startsWith('submit_flake_selection:'))) {
+            const selection = d.selections.find(sel => sel.event.id > issue.event.id
+              && (sel.call.args.selected_by_role?.[issue.call.args?.role] || []).length > 0);
+            if (selection) resolve(issue, e,
+              'the same step later completed with an accepted flake selection for this role; refused report retained',
+              [d.event, selection.call.event, selection.event, e]);
           }
           if (prior.tool === 'delegate' && checkedPrerequisiteRules.has(prior.rule)
             && prior.args?.to === p.to && taskStep(prior.args.task) === p.step) {
@@ -162,6 +176,8 @@ export class ToolAttempts {
         if (['ok', 'corrected'].includes(p.status) && call.delegation && jobReads.has(call.tool)
           && observed === call.args.job_id && p.data?.status === 'succeeded' && p.data?.done === true
           && p.data?.flow === call.delegation.operation) call.delegation.reads.push({call, event: e});
+        if (p.status === 'ok' && call.tool === 'submit_flake_selection' && call.delegation
+          && e.agent === call.delegation.role) call.delegation.selections.push({call, event: e});
         for (const issue of this.issues.values()) {
           if (issue.resolved || issue.project !== call.project) continue;
           if (p.status === 'ok' && call.project && call.tool === 'save_project_status' && call.args.status === 'done'

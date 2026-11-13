@@ -18,11 +18,6 @@
 - GitHub is repository storage only for this phase: no CI, Actions dispatch,
   reruns or remote validation. Run all verification locally. Keep automatic
   workflow triggers disabled when pushing the accepted integrated version.
-- Keep `v1compare/v1/` byte-identical to its manifest. The legacy agent's
-  LiteLLM and original specialist dependencies belong in `.venv-v1compare`:
-  `pip install -e ".[dev,v1compare,v1agents]"`, without the `agents` extra.
-  Run `.venv-v1compare/bin/python -m pytest tests/test_v1compare.py` there. The modern environment can use
-  `.[dev,agents,v1compare]` for the SDK and offline flow comparisons.
 - All OpenAI tool execution must use `ToolGateway.call`. Lifecycle logging
   callbacks do not replace permission checks. Keep secrets out of prompts and
   preserve existing sessions, recordings and budget ledgers. There is no v2
@@ -31,11 +26,8 @@
   Preserve `runs/layout.json` and the budget ledger together: relocation must
   not break old images or reset per-run spending. See `docs/run-data.md`.
 
-## Owner-directed fresh start — 31 October 2026
+## Historical note
 
-The previous optimization round is rejected. Its handoff memory is cleared.
-Do not adopt or resume its plans, assignments, issue backlog, acceptance claims
-or model campaigns from historical notes or chats. Collect requirements afresh
-in `../notes/planning/restart-20261031.md`. Existing architecture describes code,
-not the new round's approved scope. Preserve code and raw experimental/financial
-evidence unless the owner separately requests changes.
+A 31 October 2026 "fresh start" note used to stand here (Codex era, in qumus-v2). It is superseded by
+the November architecture (separate brain, sim lab, lab and contract repositories); current context
+and decisions are in `CLAUDE.md` and the project notes handoff.

@@ -201,7 +201,8 @@ not certify a physical device or replace the full stacking checks.
 ## Watch a demo
 
 1. Open **History** in the Qumus sidebar.
-2. Under **Demo recordings**, choose a recording.
+2. Under **Demonstrations**, choose a recording (the 10 Nov live Hall-bar run, or its free
+   scripted comparison). Runs made on this computer are under **Simulated lab**.
 3. Review its **Results**, **Progress**, **Conversation**, or **Experience**.
 4. Press **Play recording**, or choose a key moment on the right.
 5. Press **Back to live** to return to your current workspace.

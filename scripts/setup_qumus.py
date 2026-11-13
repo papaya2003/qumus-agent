@@ -57,13 +57,17 @@ def write_editor_settings(root: Path) -> None:
     path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
-TASK_LABELS = {"Start Qumus": [], "Stop Qumus": ["--stop"], "Qumus status": ["--status"]}
+FREE_SERVE = ["-m", "qumus2", "serve", "--db", "runs/sim-lab/try/qumus.db", "--seed", "3"]
+TASK_LABELS = {"Start Qumus": None, "Start Qumus (free, scripted)": FREE_SERVE,
+               "Stop Qumus": ["--stop"], "Qumus status": ["--status"]}
 
 
 def write_editor_tasks(root: Path) -> None:
     """VS Code buttons (Terminal > Run Task, or Cmd/Ctrl+Shift+B for Start Qumus):
-    the same start_qumus.py as the double-click launchers. Tasks of the person's
-    own are kept; only the three Qumus tasks are (re)written."""
+    the same start_qumus.py as the double-click launchers (live model, budget
+    cap), plus a free scripted start (no model calls; stop it with Ctrl+C in its
+    terminal). Tasks of the person's own are kept; only the Qumus tasks are
+    (re)written."""
     path = root / ".vscode" / "tasks.json"
     try:
         config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"version": "2.0.0"}
@@ -74,7 +78,8 @@ def write_editor_tasks(root: Path) -> None:
         return
     python, script = venv_python(REPO / ".venv"), REPO / "scripts" / "start_qumus.py"
     own = [t for t in config.get("tasks", []) if not (isinstance(t, dict) and t.get("label") in TASK_LABELS)]
-    ours = [{"label": label, "type": "process", "command": str(python), "args": [str(script), *args],
+    ours = [{"label": label, "type": "process", "command": str(python),
+             "args": args if args and args[0] == "-m" else [str(script), *(args or [])],
              "options": {"cwd": str(REPO)}, "problemMatcher": [],
              "presentation": {"reveal": "always", "panel": "dedicated", "focus": True},
              **({"group": {"kind": "build", "isDefault": True}} if label == "Start Qumus" else {})}

@@ -971,7 +971,15 @@ class OpenAIRuntime:
         async def invoke(ctx: Any, raw: str) -> str:
             if self._interrupted:
                 raise asyncio.CancelledError
-            payload = json.loads(raw)
+            try:
+                payload = json.loads(raw)
+                if not isinstance(payload, dict):
+                    raise TypeError("not an object")
+            except (ValueError, TypeError):  # as _domain_tool: a reply the model can correct
+                self.store.emit("tool.denied", {"tool": f"delegate_{role}", "args": {},
+                                                "reason": "invalid JSON object", "rule": "schema"},
+                                agent=ORCHESTRATOR)
+                return json.dumps({"status": "denied", "reason": "invalid JSON object"})
             task = payload.get("input", "")
             decision = self.gateway.delegate(role, ctx.tool_call_id, task, require_sample_outcomes=True,
                                              objective=payload.get("objective"))

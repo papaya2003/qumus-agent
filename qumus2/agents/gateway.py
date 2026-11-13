@@ -23,6 +23,7 @@ from typing import Any
 from qumus2.agents.policy import Decision, check_delegation, check_pre_tool_use
 from qumus2.agents.roster import ORCHESTRATOR
 from qumus2.agents.tooling import ToolContext, ToolRegistry, ToolResult, short_name
+from qumus2.contract.errors import ContractError
 from qumus2.core.errors import QumusError
 from qumus2.interaction.inbox import Inbox
 from qumus2.records.plan_completion import (
@@ -482,6 +483,12 @@ class ToolGateway:
             return await spec.handler(parsed, ctx)
         except QumusError as e:
             return ToolResult(status="error", summary=e.message, data=e.to_dict())
+        except (ContractError, ConnectionError, TimeoutError, ValueError, KeyError, RuntimeError) as e:
+            # A station refusal, a lost connection or a lapsed lease is an
+            # outcome the agent can act on (look at the job, retry later, ask a
+            # person); it must not end the whole turn.
+            return ToolResult(status="error", summary=f"{tool} failed: {type(e).__name__}: {e}",
+                              data={"type": type(e).__name__, "message": str(e)})
 
     def post(self, agent: str, tool: str, result: ToolResult,
              tool_use_id: str | None = None) -> str | None:

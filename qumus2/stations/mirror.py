@@ -32,10 +32,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
-from qumus2.contract import ContractClient, ContractError
+from qumus2.contract import CommandFailed, ContractClient, ContractError
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +73,10 @@ def _earlier_image_roots(root: Path | None) -> tuple[Path, ...]:
     return tuple(w / "images" for w in earlier_workspaces(root.parent if root is not None else None))
 
 
+#: run statuses of a job that is still going on at its laboratory
+OPEN_RUN_STATUSES = ("queued", "running", "paused", "parked", "waiting_human")
+
+
 class ImageCache:
     """Pictures fetched from the stations, kept under the brain's image folder."""
 
@@ -87,8 +91,13 @@ class ImageCache:
     def local_path(self, image_id: str) -> Path | None:
         if self.root is None:
             return None
-        clean = Path(*[p for p in Path(image_id).parts if p not in ("", ".", "..", "/")])
-        return self.root / clean
+        # Image ids are lab-relative POSIX paths. Read them the same way on every
+        # system: no root, drive ("C:") or parent part may leave the image folder.
+        parts = [p for p in PurePosixPath(image_id.replace("\\", "/")).parts
+                 if p.strip("/") not in ("", ".", "..") and ":" not in p]
+        if not parts:
+            return None
+        return self.root.joinpath(*parts)
 
     def fetch(self, image_id: str) -> str:
         """Local path of the picture (downloaded once); the reference itself when offline."""
@@ -223,6 +232,14 @@ class RecordMirror:
                     if self.primary:
                         self.store._x("DELETE FROM sample")
                         self.store._x("DELETE FROM reservation")
+                        # jobs the old laboratory never finished will never report
+                        # again: left open they would block save points and idle stop
+                        for run in self.store.list_runs():
+                            if run["status"] in OPEN_RUN_STATUSES:
+                                self.store.set_run_status(
+                                    run["id"], "cancelled", message="the laboratory that ran this "
+                                    "job was replaced by a different one before it finished",
+                                    error={"message": "laboratory replaced", "lab_id": str(lab_id)})
                     self.store.set_meta(self._lab_meta, str(lab_id))
                     self._save_cursor()
                     continue
@@ -370,6 +387,14 @@ class RecordMirror:
             except ContractError as exc:
                 self._fail(f"put_records: {exc}")
                 raise
+            lc = (receipt.state.raw or {}).get("last_command") or {}
+            if (receipt.command_id is not None and lc.get("id") == receipt.command_id
+                    and lc.get("result") not in (None, "running", "ok")):
+                # the station answered but did not take the records: send them again next time
+                exc = CommandFailed(f"put_records ended {lc.get('result')}: {lc.get('message')}",
+                                    result=str(lc.get("result")), last_command=lc)
+                self._fail(f"put_records: {exc}")
+                raise exc
             self._pushed_through = through
             return {"command_id": receipt.command_id, "samples": len(samples)}
 

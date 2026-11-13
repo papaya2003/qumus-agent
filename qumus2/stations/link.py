@@ -104,7 +104,10 @@ class V1Link:
                 raise ValueError(f"{action} on {self.module}: {lc.get('result')}: {lc.get('message')}")
             return lc.get("data") or {}
         # not in the reply: find this command's end in the state
-        done = client.wait_for_command(receipt, timeout_s=timeout_s)
+        try:
+            done = client.wait_for_command(receipt, timeout_s=timeout_s)
+        except CommandFailed as e:  # same as the fast path above and V2Link.command
+            raise ValueError(f"{action} on {self.module}: {e.message}") from e
         return dict(done.raw.get("data") or {})
 
     def stop(self, wait_s: float = 1.0) -> None:

@@ -45,6 +45,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 import start_qumus  # noqa: E402
 
 WINDOWS = os.name == "nt"
+# The server is on this computer: never send its requests through a system proxy.
+local_urlopen = urllib.request.build_opener(urllib.request.ProxyHandler({})).open  # loopback: no proxy
 PACKAGES = ("qumus2", "numpy", "shapely", "PIL", "yaml", "pydantic", "fastapi", "uvicorn",
             "imageio_ffmpeg")
 OPTIONAL = ("cv2", "scipy", "skimage", "klayout", "agents")
@@ -66,7 +68,7 @@ def _free_port() -> int:
 
 
 def _get(port: int, path: str) -> dict:
-    with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=10) as response:
+    with local_urlopen(f"http://127.0.0.1:{port}{path}", timeout=10) as response:
         return json.loads(response.read())
 
 
@@ -74,7 +76,7 @@ def _post(port: int, path: str, body: dict) -> dict:
     request = urllib.request.Request(f"http://127.0.0.1:{port}{path}",
                                      data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with local_urlopen(request, timeout=10) as response:
         return json.loads(response.read())
 
 

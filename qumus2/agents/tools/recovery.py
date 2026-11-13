@@ -123,8 +123,9 @@ async def reverify_job(args: RecoverArgs, ctx: ToolContext) -> ToolResult:
     if not hasattr(ctx.jobs, "reverify"):
         return ToolResult(status="error", summary="re-shoot is not available in this job "
                           "service yet")
-    _count(ctx, root_job(ctx, args.job_id), "reverify", args.reason)
     ctx.jobs.reverify(args.job_id)  # type: ignore[attr-defined]
+    # counted once the station took it: a refusal (busy module) uses no budget
+    _count(ctx, root_job(ctx, args.job_id), "reverify", args.reason)
     return job_result(ctx.jobs.status(args.job_id), recoveries(ctx.store, args.job_id),
                       store=ctx.store)
 
@@ -138,8 +139,9 @@ async def retry_job(args: RecoverArgs, ctx: ToolContext) -> ToolResult:
     if not hasattr(ctx.jobs, "retry"):
         return ToolResult(status="error", summary="retry is not available in this job "
                           "service yet")
-    _count(ctx, root_job(ctx, args.job_id), "retry", args.reason)
     rid = ctx.jobs.retry(args.job_id) or args.job_id  # type: ignore[attr-defined]
+    # counted once the station took it: a refusal (busy module) uses no budget
+    _count(ctx, root_job(ctx, args.job_id), "retry", args.reason)
     return ToolResult(status="pending", summary=f"job {rid} restarted from its failed step; "
                       "call wait_job", data={"job_id": rid})
 

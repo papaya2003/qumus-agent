@@ -542,6 +542,14 @@ export class Feed {
         for (const m of this.cards.values()) { m._tag.hidden = false; m._tag.className = 'tag paused'; m._tag.textContent = 'stopped'; }
         break;
       }
+      case 'system.stop_unconfirmed':
+        this.append(h('div', { class: 'divider item stop' }, h('span', {},
+          h('b', { text: 'Stop not confirmed' }), ` · Agents interrupted, but a station did not confirm its stop: ${p.error || 'no reply'}. Check the instruments.`)));
+        break;
+      case 'system.continue_failed':
+        this.append(h('div', { class: 'divider item stop' }, h('span', {},
+          h('b', { text: 'Continue failed' }), ` · ${p.error || 'the laboratory did not answer'}`)));
+        break;
       case 'system.continued': {
         const res = p.resumed || [], wait = p.waiting_human || [];
         const lines = [...res.map(r => `${flowLabel(r.flow)} continues from step ${r.from_step}${r.step ? ` (${stepName(r.step)})` : ''}`),

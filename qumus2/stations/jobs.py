@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from qumus2.contract import (
@@ -31,7 +32,7 @@ from qumus2.contract import (
     ContractError,
     NotFound,
 )
-from qumus2.runtime.jobs import TERMINAL, JobStatus
+from qumus2.runtime.jobs import TERMINAL, JobRecordLate, JobStatus
 from qumus2.stations.catalog import CATALOG, FlowCatalog
 from qumus2.stations.link import StationLink, V1Link, open_link
 
@@ -88,6 +89,15 @@ class ContractJobService:
         """Which contract each module is commanded with."""
         return {m: link.contract for m, link in self.links.items()}
 
+    def _lab_wide_module(self) -> str:
+        """The module that serves lab-wide commands (resume_all, complete_experiment):
+        stacking where it is connected, else the first connected module."""
+        if LAB_WIDE_MODULE in self.links:
+            return LAB_WIDE_MODULE
+        if not self.links:
+            raise ValueError("no laboratory module is connected")
+        return next(iter(self.links))
+
     def _lease(self, module: str) -> None:
         self.links[module].lease()
         self._leased.add(module)
@@ -136,8 +146,8 @@ class ContractJobService:
         if self.mirror is None:
             return
         if not self.mirror.wait_for(lambda: self.store.get_run(run_id) is not None, self.run_appear_s):
-            raise RuntimeError(f"job {run_id} was accepted but its record did not arrive "
-                               f"from the laboratory within {self.run_appear_s:.0f} s")
+            raise JobRecordLate(f"job {run_id} was accepted but its record did not arrive "
+                                f"from the laboratory within {self.run_appear_s:.0f} s", run_id=run_id)
 
     def status(self, run_id: str) -> JobStatus:
         if self.mirror is not None and not self.mirror.running:
@@ -163,21 +173,28 @@ class ContractJobService:
         self.sync()
 
     def stop_all(self) -> None:
-        errors = []
-        for module, link in self.links.items():
-            try:
-                link.stop(wait_s=1.0)
-            except ContractError as e:
-                errors.append(f"{module}: {e}")
-        for module, stop in self.extra_stops.items():
-            try:
-                results = stop() or {}
-            except Exception as e:  # noqa: BLE001 - a stop must reach every station
-                errors.append(f"{module}: {e}")
-                continue
+        """Stop every station at once: one unreachable station (retries, timeouts)
+        must not delay the stop of the others, and no error skips a station."""
+        def link_stop(link: StationLink) -> Any:
+            link.stop(wait_s=1.0)
+
+        def extra_stop(stop: Callable[[], Any]) -> Any:
+            results = stop() or {}
             bad = {k: v for k, v in results.items() if v not in ("confirmed", "pending", "accepted")}
             if bad:
-                errors.append(f"{module}: {bad}")
+                raise ConnectionError(str(bad))
+
+        jobs = [(m, link_stop, link) for m, link in self.links.items()]
+        jobs += [(m, extra_stop, stop) for m, stop in self.extra_stops.items()]
+        errors = []
+        if jobs:
+            with ThreadPoolExecutor(max_workers=len(jobs), thread_name_prefix="stop") as pool:
+                futures = [(m, pool.submit(fn, arg)) for m, fn, arg in jobs]
+                for module, fut in futures:
+                    try:
+                        fut.result()
+                    except Exception as e:  # noqa: BLE001 - a stop must reach every station
+                        errors.append(f"{module}: {e}")
         if errors:
             raise ConnectionError("stop not confirmed by every module: " + "; ".join(errors))
 
@@ -198,7 +215,8 @@ class ContractJobService:
 
     def resume_all(self) -> list[dict[str, Any]]:
         self.push()
-        result = self._command(LAB_WIDE_MODULE, "job_resume_all", {}, lease=True).get("result") or []
+        result = self._command(self._lab_wide_module(), "job_resume_all", {},
+                               lease=True).get("result") or []
         self.sync()
         return result
 
@@ -210,7 +228,7 @@ class ContractJobService:
 
     def complete_experiment(self, project_id: str, summary: str) -> dict[str, Any]:
         self.push()
-        return self._command(LAB_WIDE_MODULE, "complete_experiment",
+        return self._command(self._lab_wide_module(), "complete_experiment",
                              {"project_id": project_id, "summary": summary},
                              lease=True).get("result") or {}
 

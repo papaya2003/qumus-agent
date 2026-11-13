@@ -29,6 +29,15 @@ TERMINAL = {"succeeded", "failed", "cancelled", "parked", "waiting_human", "paus
 FINISHED_STEP = ("done", "skipped")
 
 
+class JobRecordLate(RuntimeError):
+    """submit: the station accepted the job (it runs) but its run record has not
+    reached the brain yet. Callers keep `run_id` so nobody submits it twice."""
+
+    def __init__(self, message: str, *, run_id: str) -> None:
+        super().__init__(message)
+        self.run_id = run_id
+
+
 @dataclass
 class JobStatus:
     run_id: str

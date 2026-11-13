@@ -58,6 +58,9 @@ EVENT_KINDS: dict[str, str] = {
     "system.stopped": "instruction_id, dropped[]  (interrupted; every job pauses at a safe point)",
     "system.continued": "instruction_id, resumed[{run_id, flow, from_step, step, reason}], "
                         "waiting_human[{run_id, flow, step, reason}]",
+    "system.stop_unconfirmed": "instruction_id, error, dropped[]  (interrupted, but a station did not "
+                               "confirm its stop: a person must check it)",
+    "system.continue_failed": "instruction_id, error  (Continue could not reach the laboratory)",
     # tools (written by the PreToolUse / PostToolUse hooks or the scripted runtime)
     "tool.call": "tool, args, tool_use_id",
     "tool.result": "tool, tool_use_id, status, summary, data, images",

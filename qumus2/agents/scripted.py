@@ -65,6 +65,8 @@ MAX_PLACEMENT_RETRIES = 3
 # accelerated clock spends in a few wall seconds, so a count of re-waits ran
 # out during one full-resolution v1 search (about an hour of wall time).
 MAX_PENDING_WAIT_S = 4 * 3600.0
+#: resumes (retry_job) of a job the station paused by itself, per wait
+MAX_STATION_RESUMES = 2
 
 
 def _job_of(r: ToolResult) -> str | None:
@@ -258,6 +260,7 @@ class ScriptedRuntime:
     async def _call(self, agent: str, name: str, args: dict[str, Any]) -> tuple[ToolResult, Any]:
         loop = asyncio.get_running_loop()
         give_up = loop.time() + MAX_PENDING_WAIT_S
+        station_resumes = 0
         while True:
             result, extra = await self.gateway.call(agent, name, args)
             job = result.data or {}
@@ -270,6 +273,19 @@ class ScriptedRuntime:
                 continue
             if name != "wait_job" or job.get("status") != "paused":
                 return result, extra
+            if self._go.is_set():
+                # Paused, but not by this Stop: the station paused it (its lease
+                # lapsed, or a person pressed Stop at the station). Do what the
+                # tool result says a real agent does, a bounded number of times;
+                # never wait in a loop for a Continue that nobody will press.
+                if station_resumes >= MAX_STATION_RESUMES or loop.time() >= give_up:
+                    return result, extra
+                station_resumes += 1
+                resumed, _ = await self.gateway.call(agent, "retry_job", {"job_id": args.get("job_id"), "reason": "the station paused the job by itself "
+                     "(lease lapse or its own Stop); nothing failed"})
+                if resumed.status not in ("ok", "pending", "corrected"):
+                    return result, extra
+                continue
             # the job stopped at Stop: wait for Continue (it resumes the job), then again
             await self._go.wait()
             await asyncio.sleep(0.2)

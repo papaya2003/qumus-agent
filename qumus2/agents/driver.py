@@ -32,6 +32,7 @@ with a --budget), messages are dropped (`user.dropped`) instead of sent.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -41,6 +42,8 @@ from qumus2.core.scrub import scrub_text
 from qumus2.interaction.inbox import Inbox, as_turn
 from qumus2.runtime.jobs import JobService
 from qumus2.runtime.store import RunStore
+
+log = logging.getLogger(__name__)
 
 MESSAGE_KINDS = ("message", "plan_change", "veto")
 
@@ -107,15 +110,32 @@ class ConversationDriver:
         dropped = self._drop("Stop pressed before delivery")
         if self._outage_sleep is not None:
             self._outage_sleep.cancel()
+        # The stations stop first (in a thread, at once): the physical stop must
+        # not wait for the model's turn to unwind.
+        stopping = asyncio.create_task(asyncio.to_thread(self.jobs.stop_all))
         await self.runtime.interrupt()
-        await asyncio.to_thread(self.jobs.stop_all)
+        try:
+            await stopping
+        except Exception as e:  # noqa: BLE001 - Stop is reported, never fatal to the driver
+            log.exception("Stop was not confirmed by every station")
+            self._note_due = True
+            self.store.mark_instruction(ins["id"], "handled", f"interrupted; stop unconfirmed: {e}")
+            self.store.emit("system.stop_unconfirmed", {"instruction_id": ins["id"], "error": str(e),
+                                                        "dropped": [i["id"] for i in dropped]})
+            return
         self._note_due = True
         self.store.mark_instruction(ins["id"], "handled", "interrupted + jobs paused")
         self.store.emit("system.stopped", {"instruction_id": ins["id"],
                                            "dropped": [i["id"] for i in dropped]})
 
     async def _continue(self, ins: dict[str, Any]) -> None:
-        decisions = await asyncio.to_thread(self.jobs.resume_all)
+        try:
+            decisions = await asyncio.to_thread(self.jobs.resume_all)
+        except Exception as e:  # noqa: BLE001 - reported to the page, the driver keeps running
+            log.exception("Continue failed")
+            self.store.mark_instruction(ins["id"], "handled", f"continue failed: {e}")
+            self.store.emit("system.continue_failed", {"instruction_id": ins["id"], "error": str(e)})
+            return
         resumed, waiting = [], []
         for d in decisions:
             run = self.store.get_run(d["run_id"]) or {}
@@ -129,6 +149,12 @@ class ConversationDriver:
         self.store.mark_instruction(ins["id"], "handled", f"{len(resumed)} job(s) resumed")
         self.store.emit("system.continued", {"instruction_id": ins["id"], "resumed": resumed,
                                              "waiting_human": waiting})
+        running = self.runtime.busy or (self._turn is not None and not self._turn.done())
+        if running and not getattr(self.runtime, "stopped", False):
+            # Continue without a Stop (or pressed twice) while a turn runs: the
+            # paused jobs resumed above; the running turn sees them. Never start
+            # a second turn beside it.
+            return
         self._turn = asyncio.create_task(
             self._run(self.runtime.continue_turn, _continue_text(resumed, waiting)))
 
@@ -202,7 +228,12 @@ class ConversationDriver:
 
     async def run_forever(self) -> None:
         while True:
-            await self.tick()
+            try:
+                await self.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - one bad tick must not end every later message
+                log.exception("conversation driver tick failed")
             await asyncio.sleep(self.poll_s)
 
     def start(self) -> None:

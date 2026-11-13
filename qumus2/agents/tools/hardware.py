@@ -11,6 +11,7 @@ error result, not a crash.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -20,7 +21,7 @@ from qumus2.core.materials import normalize_thickness_label
 from qumus2.records.budget import plan_target
 from qumus2.records.geometry import BridgeRequirement
 from qumus2.records.outcomes import conditions_now
-from qumus2.runtime.jobs import JobStatus
+from qumus2.runtime.jobs import JobRecordLate, JobStatus
 
 
 class PlaceChipArgs(BaseModel):
@@ -362,6 +363,14 @@ def submit(ctx: ToolContext, flow: str, params: dict[str, Any],
            meta: dict[str, Any] | None = None) -> ToolResult:
     try:
         rid = ctx.jobs.submit(flow, params, project_id=ctx.project_id, requested_by=ctx.agent)
+    except JobRecordLate as e:  # accepted and running: never submit it again
+        if meta:
+            with contextlib.suppress(KeyError):
+                ctx.store.update_run_meta(e.run_id, **meta)
+        return ToolResult(status="pending", summary=f"job {e.run_id} was accepted ({flow}) but its "
+                          "record has not arrived from the laboratory yet; do not submit it again, "
+                          "call wait_job", data={"job_id": e.run_id, "flow": flow,
+                                                 "record_late": True})
     except KeyError:
         return ToolResult(status="error", summary=f"flow {flow!r} is not available in this lab "
                           "yet", data={"flow": flow})

@@ -247,6 +247,7 @@ function apply(e, isLive) {
       S.modelError = null;  // the next turn tries again
       S.waiting = null;    // a person is here and answered
       break;
+    case 'system.stop_unconfirmed':
     case 'system.stopped': S.stopped = true; S.tasks = {}; S.thinking = null; if (isLive || REPLAY) S.busy = false; break;
     case 'system.continued': S.stopped = false; S.waiting = null; break;
     case 'job.status':

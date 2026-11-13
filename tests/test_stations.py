@@ -32,7 +32,10 @@ def test_the_brain_imports_no_laboratory_code():
             for name in names:
                 assert not name.startswith(LAB_PACKAGES), f"{path.relative_to(ROOT)} imports {name}"
     for gone in ("flows", "safety", "devices", "testbench", "simlab"):
-        assert not (ROOT / "qumus2" / gone).exists()
+        # git leaves an untracked __pycache__ behind after a checkout; only real files count
+        left = [p for p in (ROOT / "qumus2" / gone).rglob("*")
+                if p.is_file() and "__pycache__" not in p.parts]
+        assert not left, f"laboratory code left in qumus2/{gone}: {left[:3]}"
 
 
 def test_stations_yaml_default_and_errors(tmp_path):

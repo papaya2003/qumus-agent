@@ -103,6 +103,16 @@ def ensure_simlab(stations: Stations, *, seed: int | None = None, data_dir: str 
             f"station(s) {', '.join(remote)} at "
             f"{', '.join(stations.modules[m].url for m in remote)} do not answer; they run on another "
             "computer, so start qumus-simlab there (or open the SSH tunnel) and try again.")
+    answering = [m for m, s in stations.modules.items()
+                 if s.kind == "sim" and m not in offline and _is_local(s.url)]
+    if answering:
+        # A sim lab already runs here but lacks a window: a second one would only
+        # collide with its ports. Say what to do instead of failing on that.
+        raise RuntimeError(
+            f"qumus-simlab is running on this computer ({', '.join(answering)} answer) but "
+            f"{', '.join(offline)} at {', '.join(stations.modules[m].url for m in offline)} do(es) "
+            "not. Stop that sim lab (or update it to a version with every window) and start again, "
+            "or switch those stations off in stations.yaml.")
     simlab_dir = stations.simlab_dir
     if simlab_dir is None or not (simlab_dir / "qumus_simlab").is_dir():
         raise RuntimeError(

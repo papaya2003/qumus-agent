@@ -1,5 +1,7 @@
 # Qumus agent system (the brain)
 
+**Qumus v2.2 · stage 2 · brain.** Works with [qumus-simlab](https://github.com/papaya2003/qumus-simlab) (simulated lab), [qumus-lab](https://github.com/papaya2003/qumus-lab) (real-lab drivers) and [lab-contract](https://github.com/papaya2003/lab-contract) (station contract); keep the four checkouts side by side. Stage 1 (v2.1) is the frozen demo [Qumus-v2](https://github.com/papaya2003/Qumus-v2), tag `v2.1`.
+
 > **中文一句话：** 这是 Qumus 的“大脑”——AI 团队、网页界面、History 回放和预算都在这里。
 > 它不包含任何实验室代码，只通过统一的窗口规则（contract v1，HTTP）去指挥各个实验室模块。
 > 默认连接模拟实验室（独立程序 qumus-simlab）；以后把 stations.yaml 里某个模块的地址换成真实实验室即可。

@@ -70,7 +70,7 @@ from pathlib import Path
 
 WINDOWS = os.name == 'nt'
 # The server is on this computer: never send its requests through a system proxy.
-LOCAL_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+local_urlopen = urllib.request.build_opener(urllib.request.ProxyHandler({})).open  # loopback: no proxy
 if WINDOWS:
     import msvcrt
 else:
@@ -210,7 +210,7 @@ def write_state(fd: int, state: dict) -> None:
 
 def health(port: int, timeout: float = 3.0) -> dict | None:
     try:
-        with LOCAL_HTTP.open(f'http://{HOST}:{port}/api/health', timeout=timeout) as response:
+        with local_urlopen(f'http://{HOST}:{port}/api/health', timeout=timeout) as response:
             value = json.loads(response.read())
     except (OSError, ValueError):
         return None
@@ -355,7 +355,7 @@ def request_shutdown(port: int, token: str) -> bool:
     request = urllib.request.Request(f'http://{HOST}:{port}/api/server/shutdown', data=b'',
                                      method='POST', headers={SHUTDOWN_TOKEN_HEADER: token})
     try:
-        with LOCAL_HTTP.open(request, timeout=5.0) as response:
+        with local_urlopen(request, timeout=5.0) as response:
             return response.status == 200
     except (OSError, ValueError):
         return False

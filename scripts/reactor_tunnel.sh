@@ -20,7 +20,8 @@ delay=2
 while true; do
   echo "$(date '+%F %T') opening 127.0.0.1:${LOCAL_PORT} -> ${REACTOR_SSH} 127.0.0.1:${REMOTE_PORT}"
   start=$(date +%s)
-  ssh -N "${key_args[@]}" \
+  # ${arr[@]+"${arr[@]}"}: an empty array under set -u fails in bash < 4.4 (macOS /bin/bash 3.2)
+  ssh -N ${key_args[@]+"${key_args[@]}"} \
     -o BatchMode=yes -o ExitOnForwardFailure=yes \
     -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
     -L "127.0.0.1:${LOCAL_PORT}:127.0.0.1:${REMOTE_PORT}" "$REACTOR_SSH"

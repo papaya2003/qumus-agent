@@ -76,7 +76,10 @@ def prepare_local_files(*, refresh_launcher: bool = False) -> None:
         launcher = root / name
         # newline="": keep the template's line endings (.bat needs CRLF)
         source = _read_exact(REPO / "scripts" / "templates" / name)
-        repo = str(REPO) if name.endswith(".bat") else shlex.quote(str(REPO))
+        # .bat: relative to the launcher's own folder (%~dp0 = REPO.parent\). cmd.exe
+        # reads batch files in the OEM code page (GBK on a Chinese Windows), so an
+        # absolute path with non-ASCII folder names would be garbled.
+        repo = "%~dp0" + REPO.name if name.endswith(".bat") else shlex.quote(str(REPO))
         source = source.replace("@QUMUS_REPO@", repo)
         if (not launcher.exists() or refresh_launcher
                 or _read_exact(launcher) == source):

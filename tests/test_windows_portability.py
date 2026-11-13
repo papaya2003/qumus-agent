@@ -347,7 +347,8 @@ def test_setup_uses_the_windows_venv_layout_and_writes_bat_launchers(tmp_path, m
     setup_qumus.prepare_local_files()
     start = (tmp_path / "Qumus Lab" / "Start Qumus.bat").read_bytes()
     stop = (tmp_path / "Qumus Lab" / "Stop Qumus.bat").read_bytes()
-    assert f'call "{repo}\\scripts\\qumus_launcher.bat" %*'.encode() in start
+    assert b'call "%~dp0v2\\scripts\\qumus_launcher.bat" %*' in start
+    assert str(tmp_path).encode() not in start  # no absolute (possibly non-ASCII) path
     assert b"--stop" in stop and b"\r\n" in start and b"\n" not in start.replace(b"\r\n", b"")
     assert not (tmp_path / "Qumus Lab" / "Start Qumus.command").exists()
     monkeypatch.setattr(setup_qumus, "WINDOWS", False)

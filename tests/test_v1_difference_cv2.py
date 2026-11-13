@@ -152,7 +152,21 @@ def _pair(seed):
 
 
 def _without_display(result):
-    return {k: v for k, v in result.items() if k != "external_boundary_segments_px"}
+    return _floats_to_12_digits({k: v for k, v in result.items() if k != "external_boundary_segments_px"})
+
+
+def _floats_to_12_digits(value):
+    """Decisions, counts and pixels compare exactly; a float distance may differ
+    in its last bit between CPUs (fused multiply-add on Apple arm64, 2026-11-13:
+    edge_distance_mm -0.22480773131506795 vs ...793), so floats compare to 12
+    significant digits, far below any threshold the decision uses."""
+    if isinstance(value, float):
+        return float(f"{value:.12g}")
+    if isinstance(value, dict):
+        return {k: _floats_to_12_digits(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(_floats_to_12_digits(v) for v in value)
+    return value
 
 
 @pytest.mark.parametrize("seed", range(40))

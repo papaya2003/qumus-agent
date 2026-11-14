@@ -2,7 +2,7 @@
 
 Each recording has a specific audience-facing purpose. Playback is local and
 free; it makes no model call. Start the normal application, open **History →
-Demo recordings**, and choose a story. Each has its own Conversation, Progress,
+Demonstrations**, and choose a story. Each has its own Conversation, Progress,
 Results and Experience. Current recordings with request measurements also have
 a Context chart; older recordings show that measurements are unavailable.
 
@@ -55,7 +55,7 @@ labels and require no old execution SDK to play.
 
 ## Local playback and verification
 
-Start Qumus (`Start Qumus.command`) and open **History → Demo recordings**.
+Start Qumus (`Start Qumus.command`) and open **History → Demonstrations**.
 There is no separate command-line playback (removed 2026-11-06). The catalog
 discovers active recording folders automatically and excludes `archive/`;
 `DEFAULT` names the recording shown first. Verification is local; do not run

@@ -57,6 +57,38 @@ def write_editor_settings(root: Path) -> None:
     path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
+FREE_SERVE = ["-m", "qumus2", "serve", "--db", "runs/sim-lab/try/qumus.db", "--seed", "3"]
+TASK_LABELS = {"Start Qumus": None, "Start Qumus (free, scripted)": FREE_SERVE,
+               "Stop Qumus": ["--stop"], "Qumus status": ["--status"]}
+
+
+def write_editor_tasks(root: Path) -> None:
+    """VS Code buttons (Terminal > Run Task, or Cmd/Ctrl+Shift+B for Start Qumus):
+    the same start_qumus.py as the double-click launchers (live model, budget
+    cap), plus a free scripted start (no model calls; stop it with Ctrl+C in its
+    terminal). Tasks of the person's own are kept; only the Qumus tasks are
+    (re)written."""
+    path = root / ".vscode" / "tasks.json"
+    try:
+        config = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"version": "2.0.0"}
+        if not isinstance(config, dict) or not isinstance(config.get("tasks", []), list):
+            raise ValueError("tasks.json must contain a tasks list")
+    except (ValueError, OSError):
+        print(f"Kept custom editor tasks unchanged: {path}")
+        return
+    python, script = venv_python(REPO / ".venv"), REPO / "scripts" / "start_qumus.py"
+    own = [t for t in config.get("tasks", []) if not (isinstance(t, dict) and t.get("label") in TASK_LABELS)]
+    ours = [{"label": label, "type": "process", "command": str(python),
+             "args": args if args and args[0] == "-m" else [str(script), *(args or [])],
+             "options": {"cwd": str(REPO)}, "problemMatcher": [],
+             "presentation": {"reveal": "always", "panel": "dedicated", "focus": True},
+             **({"group": {"kind": "build", "isDefault": True}} if label == "Start Qumus" else {})}
+            for label, args in TASK_LABELS.items()]
+    config["tasks"] = ours + own
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def _read_exact(path: Path) -> str:
     with path.open(encoding="utf-8", newline="") as handle:   # Path.read_text(newline=) is 3.13+
         return handle.read()
@@ -90,6 +122,7 @@ def prepare_local_files(*, refresh_launcher: bool = False) -> None:
         print(f"Launcher: {launcher}")
     for folder in (root, REPO):
         write_editor_settings(folder)
+        write_editor_tasks(folder)
     print("Edit private .env values before sending a model task. Setup makes no model calls.")
 
 

@@ -1,11 +1,12 @@
-// History · Runs: the current Hall-bar run (Simulated lab) and Real instruments
+// History · Runs: Demonstrations, Simulated lab and Real instruments
 // (scenario 4; the demo of scenario 5 starts here, no command line).
 //
-//   left    two groups. "Simulated lab": the current Hall-bar recording(s)
-//           (demoguide CURRENT), then every earlier `serve` of this run store
-//           that was asked something (GET /api/history; the live page only).
-//           Other recordings stay on disk but are listed only while selected
-//           or playing. "Real instruments": empty until real hardware runs.
+//   left    three groups. "Demonstrations": the recordings named in demoguide
+//           (CURRENT, in DEMOS order) found in recordings/. "Simulated lab":
+//           the current run, then every earlier `serve` of this run store that
+//           was asked something (GET /api/history; the live page only). Other
+//           recordings stay on disk but are listed only while selected or
+//           playing. "Real instruments": empty until real hardware runs.
 //   centre  the picked run, read-only: what it was asked and how it ended,
 //           "▶ Play recording", and its Results, Progress tree or
 //           Conversation (the same views as during the run).
@@ -16,7 +17,7 @@
 // &at=<event index>): the replay takes the whole page, with "Back to live".
 
 import { h, api, fetchRecording, fmtDur, label, linkIds, modelLabel } from './ui.js';
-import { CURRENT, DEMOS, DIAGNOSTICS } from './demoguide.js';
+import { CURRENT, DEMOS, DIAGNOSTICS, order } from './demoguide.js';
 import { Session, OUTCOME } from './session.js';
 import { Results } from './results.js';
 import { ProgressTree } from './tree.js';
@@ -144,8 +145,8 @@ export class HistoryView {
     // The simulated group lists only the current Hall-bar recording(s), the
     // runs on this computer and whatever is selected or playing; other
     // recordings stay on disk but are not listed.
-    rows.push(h('div', { class: 'sec-t', text: 'Simulated lab' }));
-    if (this.ctx.current?.()) rows.push(row({ kind: 'current', id: 'live' }, 'Current run', ['Live context']));
+    // Demonstrations (owner, 2026-11-13): the recordings to show and replay,
+    // named in demoguide; then this computer's own simulated runs.
     const recs = this.recs || [];
     const demoRow = r => {
       const guide = DEMOS[r.name];
@@ -157,13 +158,18 @@ export class HistoryView {
       return el;
     };
     const shown = recs.filter(r => CURRENT.has(r.name) || this.key(this.sel) === `rec:${r.name}` || this.key(this.playingItem()) === `rec:${r.name}`);
-    rows.push(...shown.map(demoRow));
+    shown.sort((a, b) => order(a.name) - order(b.name));
+    rows.push(h('div', { class: 'sec-t', text: 'Demonstrations' }));
+    rows.push(...(shown.length ? shown.map(demoRow)
+      : [h('div', { class: 'placeholder', text: this.recs ? 'No demonstration recording in recordings/ on this computer.' : 'Loading…' })]));
+    rows.push(h('div', { class: 'sec-t', text: 'Simulated lab' }));
+    if (this.ctx.current?.()) rows.push(row({ kind: 'current', id: 'live' }, 'Current run', ['Live context']));
     for (const r of this.runs || []) {
       rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
         r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
     }
-    if (!shown.length && !(this.runs || []).length && !this.ctx.current?.()) {
-      rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No Hall-bar run yet.' : 'Loading…' }));
+    if (!(this.runs || []).length && !this.ctx.current?.()) {
+      rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No run on this computer yet.' : 'Loading…' }));
     }
     rows.push(h('div', { class: 'sec-t', text: 'Real instruments' }));
     rows.push(h('div', { class: 'placeholder', text: 'No run on real instruments yet.' }));

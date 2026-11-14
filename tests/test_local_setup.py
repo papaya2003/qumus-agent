@@ -36,3 +36,26 @@ def test_setup_preserves_private_config_data_and_editor_choices(tmp_path, monkey
     stop = tmp_path / "Stop Qumus.command"
     assert f"QUMUS_REPO='{repo}'" in stop.read_text(encoding="utf-8") and "--stop" in stop.read_text(encoding="utf-8")
     assert stop.stat().st_mode & 0o111
+
+
+def test_setup_writes_vscode_start_tasks_and_keeps_the_persons_own(tmp_path, monkeypatch):
+    repo = tmp_path / "qumus-agent"
+    (repo / "scripts").mkdir(parents=True)
+    tasks = tmp_path / ".vscode/tasks.json"
+    tasks.parent.mkdir()
+    mine = {"label": "my task", "type": "shell", "command": "echo hi"}
+    tasks.write_text(json.dumps({"version": "2.0.0", "tasks": [mine, {"label": "Start Qumus"}]}), encoding="utf-8")
+    monkeypatch.setattr(setup_qumus, "REPO", repo)
+    for _ in range(2):
+        setup_qumus.write_editor_tasks(tmp_path)
+    result = json.loads(tasks.read_text(encoding="utf-8"))
+    labels = [t["label"] for t in result["tasks"]]
+    assert labels == ["Start Qumus", "Start Qumus (free, scripted)", "Stop Qumus", "Qumus status", "my task"]
+    start, free, stop = result["tasks"][0], result["tasks"][1], result["tasks"][2]
+    assert free["args"][:3] == ["-m", "qumus2", "serve"] and "--openai" not in free["args"]
+    assert start["args"] == [str(repo / "scripts" / "start_qumus.py")] and start["group"]["isDefault"] is True
+    assert stop["args"][-1] == "--stop" and start["options"]["cwd"] == str(repo)
+    assert result["tasks"][4] == mine
+    tasks.write_text("{ not json", encoding="utf-8")
+    setup_qumus.write_editor_tasks(tmp_path)
+    assert tasks.read_text(encoding="utf-8") == "{ not json"

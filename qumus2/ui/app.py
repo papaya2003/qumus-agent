@@ -149,6 +149,18 @@ class MessageIn(BaseModel):
     kind: Literal["message", "plan_change", "veto", "stop", "continue"] = "message"
 
 
+class CompactIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    #: optional: what the summary must keep ("keep every attempt on chip 12")
+    focus: str = Field(default="", max_length=1000)
+
+
+class CompactionSettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    auto: bool | None = None
+    window_percent: float | None = None
+
+
 class FaultIn(BaseModel):
     fault: str  # one of the simulated lab's faults (GET /api/faults)
     params: dict[str, Any] = {}
@@ -543,6 +555,29 @@ def create_app(services: Services, *, start_driver: bool = True,
         """After Stop: paused jobs resume where they can, the model continues."""
         iid = s.store.add_instruction("CONTINUE", kind="continue", project_id=s.project_id)
         return {"instruction_id": iid}
+
+    @app.post("/api/compact")
+    def compact(c: CompactIn) -> dict[str, str]:
+        """Compact the orchestrator's conversation: at once when idle, else
+        before its next model request (agents/compaction.py)."""
+        iid = s.store.add_instruction(c.focus.strip(), kind="compact", project_id=s.project_id)
+        return {"instruction_id": iid}
+
+    @app.get("/api/context")
+    def context() -> dict[str, Any]:
+        """The context meter: last measured orchestrator input and the automatic point."""
+        status = getattr(s.runtime, "context_status", None)
+        return status() if status else {"supported": False, "mode": s.runtime.mode}
+
+    @app.post("/api/context/settings")
+    def context_settings(c: CompactionSettingsIn) -> dict[str, Any]:
+        change = getattr(s.runtime, "set_compaction_settings", None)
+        if change is None:
+            raise HTTPException(409, "This agent runtime cannot compact its context.")
+        try:
+            return change(c.model_dump(exclude_none=True))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     @app.post("/api/faults")
     def fault(f: FaultIn) -> dict[str, bool]:

@@ -12,6 +12,11 @@ Stop and Continue (UI buttons):
             (`system.continued` lists from which step, or that a person must
             look), then the runtime goes on (`AgentRuntime.continue_turn`) with
             a note saying so.
+Compact (the Compact button, `POST /api/compact`): while a turn runs, the
+runtime compacts before the orchestrator's next model request; while idle, at
+once (`compact_now`), and messages sent meanwhile wait for it. A runtime that
+cannot compact marks the request handled with a note.
+
 A message sent after Stop without Continue reaches the orchestrator with a note
 that jobs are paused (they go on at Continue or when it retries them).
 
@@ -85,7 +90,13 @@ class ConversationDriver:
             await self._stop(s)
         for c in self.inbox.drain(kinds=("continue",)):
             await self._continue(c)
+        compact = self.inbox.drain(kinds=("compact",))
+        for c in compact:
+            self._request_compaction(c)
         if self.runtime.busy or (self._turn and not self._turn.done()):
+            return
+        if getattr(self.runtime, "compaction_requested", False):
+            self._turn = asyncio.create_task(self._compact())
             return
         if getattr(self.runtime, "budget_exhausted", False):
             self._drop("the run budget is spent; not sent to the model")
@@ -97,6 +108,22 @@ class ConversationDriver:
                 text = self._stopped_note() + text
                 self._note_due = False  # said once; the paused jobs stay paused
             self._turn = asyncio.create_task(self._run(self.runtime.send, text))
+
+    def _request_compaction(self, ins: dict[str, Any]) -> None:
+        request = getattr(self.runtime, "request_compaction", None)
+        if request is None:
+            self.store.mark_instruction(ins["id"], "handled", "this agent runtime cannot compact")
+            return
+        request(ins["text"] or None, ins["id"])
+        self.store.mark_instruction(ins["id"], "handled", "compaction requested")
+
+    async def _compact(self) -> None:
+        try:
+            await self.runtime.compact_now()  # type: ignore[attr-defined]
+        except Exception as e:  # noqa: BLE001 - shown on the page, the driver keeps running
+            log.exception("compaction failed")
+            self.store.emit("notification", {"level": "warn", "reason": "compaction_failed",
+                                             "text": f"Context compaction failed: {scrub_text(str(e))[:500]}"})
 
     def _drop(self, why: str) -> list[dict[str, Any]]:
         dropped = [i for i in self.store.pending_instructions() if i["kind"] in MESSAGE_KINDS]

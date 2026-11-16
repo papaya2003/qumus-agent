@@ -77,6 +77,11 @@ Older recordings without composition show "not recorded". No old category counts
 are inferred from characters, totals, newer settings or another model. Existing
 export/replay includes the additive event field without rewriting recordings.
 
+After a context compaction (`docs/runtime.md`), the first item of the
+orchestrator's conversation is the handoff summary (a user-role record starting
+"[Context handoff summary"); it counts as conversation history. The summary
+request itself is attributed to the agent `compactor`.
+
 ## Related request identity and model switching
 
 New request events derive `gateway` from the actual HTTP request URL: normalized

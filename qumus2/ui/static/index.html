@@ -174,7 +174,11 @@
           <button class="go-btn" id="continue-btn" hidden title="Continue: paused jobs go on from the right step; Qumus picks up its plan"><i></i></button>
           <button class="stop-btn" id="stop-btn" title="Stop (Esc): interrupt Qumus; every job pauses at its next safe point"><i></i></button>
         </div>
-        <div class="hint" id="hint" title="During a run Qumus reads your message after its current tool call">Enter to send · Shift+Enter for a new line · Esc stops</div>
+        <div class="composer-foot">
+          <div class="hint" id="hint" title="During a run Qumus reads your message after its current tool call">Enter to send · Shift+Enter for a new line · Esc stops</div>
+          <!-- context meter and Compact (contextmeter.js) -->
+          <div class="ctx" id="ctx" hidden></div>
+        </div>
       </div>
     </section>
 

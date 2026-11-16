@@ -26,3 +26,17 @@ picking:
   # selected. The testbench saves microscope images when the run store is a
   # file (":memory:" runs write none, so tests there switch it off).
   require_optical_images: true
+
+# Context compaction of the orchestrator's conversation (agents/compaction.py,
+# docs/runtime.md). Automatic when the last orchestrator request used
+# window_percent of the model's context window (model_context_limits.yaml or
+# the Model settings page); the web page can change auto and window_percent per
+# project. QUMUS_COMPACTION=off switches automatic compaction off.
+compaction:
+  auto: true
+  window_percent: 50
+  fallback_threshold_tokens: 150000   # when the model's window is unknown
+  keep_recent_tokens: 25000           # newest conversation kept word for word
+  summary_max_tokens: 4096
+  min_growth_tokens: 50000            # between two automatic compactions
+  retry_after_tokens: 20000           # after a failed summary request

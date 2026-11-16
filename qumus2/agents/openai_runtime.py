@@ -14,11 +14,15 @@ import json
 import mimetypes
 import os
 import re
+import time
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+from qumus2.agents import compaction
+from qumus2.agents.compaction import COMPACTOR
 from qumus2.agents.context_composition import instruction_sections
 from qumus2.agents.model_context import UNSET, context_defaults, context_overrides
 from qumus2.agents.model_settings import agent_model_choices
@@ -499,6 +503,25 @@ class OpenAIRuntime:
                            or f"openai-{uuid4().hex}")
         if gateway.project_id:
             self.store.update_project_state(gateway.project_id, openai_session_id=self.session_id)
+        # Context compaction (agents/compaction.py). _view: the cut applied to
+        # every orchestrator request until the session switches at turn end.
+        self.compaction = compaction.load_settings(self.cfg, state)
+        pending = state.get("openai_compaction_pending")
+        self._view: dict[str, Any] | None = (
+            pending if isinstance(pending, dict) and pending.get("session_id") == self.session_id else None)
+        self._manual: dict[str, Any] | None = None   # a person's request, due at the next request
+        self._reported_tokens: int | None = self._last_reported_input()
+        self._estimated_tokens: int | None = None    # after a compaction, until the next report
+        self._next_auto_at: int | None = None
+        self._after_compaction: dict[str, Any] | None = None
+        self._shrink_next = False
+        self._compacting = False
+        self._compaction_task: asyncio.Task[Any] | None = None
+        self._compactor_agent: Any = None
+        self._compactor_config: Any = None
+        self._compactor_usage: dict[str, Any] = {}
+        self._sessions_db = ":memory:" if self.store.path == ":memory:" else str(
+            Path(self.store.path).with_suffix(".openai-sessions.db"))
 
     def _project(self) -> dict[str, Any] | None:
         return self.store.get_project(self.gateway.project_id) if self.gateway.project_id else None
@@ -535,6 +558,8 @@ class OpenAIRuntime:
 
     def agent_model(self, role: str) -> dict[str, Any]:
         """Resolve one role's model, rates and deployment capacity together."""
+        if role == COMPACTOR:  # summaries are written by the orchestrator's model
+            return self.agent_model(ORCHESTRATOR)
         choice = self._agent_models.get(role) or {
             'model': self.creds.model_id, 'input_price': self.creds.input_price,
             'output_price': self.creds.output_price}
@@ -589,11 +614,16 @@ class OpenAIRuntime:
             self._last_messages.clear()
             # Different models must not inherit provider-specific reasoning items.
             self.session_id = f'openai-{uuid4().hex}'
+            self._compactor_agent = self._compactor_config = None
+            self._view = self._manual = self._after_compaction = None
+            self._reported_tokens = self._estimated_tokens = self._next_auto_at = None
+            self._shrink_next = False
             if self.gateway.project_id:
                 limits = dict((self._project() or {}).get('state', {}).get('openai_context_limits', {}))
                 # Persist overrides only, so future catalog updates can refresh defaults.
                 limits[updated.base_url] = self._context_overrides.copy()
                 self.store.update_project_state(self.gateway.project_id, openai_session_id=self.session_id,
+                    openai_compaction_pending=None,
                     openai_context_limits=limits,
                     openai_model_config={'model': model, 'input_price': input_price,
                                          'cached_input_price': cached_input_price,
@@ -762,6 +792,12 @@ class OpenAIRuntime:
                 # Missing usage keeps the full reservation, including across restarts.
                 if reservation and (usage.input_tokens or usage.output_tokens):
                     rt._ledger.settle(reservation, cost)
+                if agent.name == ORCHESTRATOR and usage.input_tokens:
+                    rt._measured(usage.input_tokens)
+                elif agent.name == COMPACTOR:
+                    rt._compactor_usage = {"cost_usd": rt._compactor_usage.get("cost_usd", 0.0) + cost,
+                                           "input_tokens": usage.input_tokens,
+                                           "output_tokens": usage.output_tokens}
                 # Persist after each response, including responses preceding a crash.
                 rt.store.emit("agent.usage", {"provider": "openai", "session_id": rt.session_id,
                               "call_id": rt._request_context.get("call_id"),
@@ -800,9 +836,8 @@ class OpenAIRuntime:
 
             provider = BufferedProvider(provider)
         self._hooks = Hooks()
-        async def prepare_input(data):
-            from agents.run_config import ModelInputData
 
+        async def pace() -> None:
             # The SDK runs its input filter before on_llm_start. Wait before
             # reading state, so a job/plan change during pacing is included in
             # this request. The final hook still checks budget and reserves the
@@ -821,6 +856,22 @@ class OpenAIRuntime:
             self._check_budget()  # Stop may have arrived while pacing.
             self._next_model_call = loop.time() + float(self.cfg.get("openai", {}).get(
                 "min_request_interval_s", 0))
+
+        async def prepare_summary_input(data):
+            await pace()
+            return data.model_data
+
+        async def prepare_input(data):
+            from agents.run_config import ModelInputData
+
+            if getattr(getattr(data, "agent", None), "name", None) == ORCHESTRATOR:
+                # Compaction first (its own request paces itself), then this request.
+                self._check_budget()
+                shown = await self._orchestrator_input(list(data.model_data.input))
+                # only model_data is read below (transport_model_input)
+                data = SimpleNamespace(agent=data.agent, model_data=ModelInputData(
+                    input=shown, instructions=data.model_data.instructions))
+            await pace()
             self._composition_evidence = []
             self._composition_filter_actions = {}
             filtered = transport_model_input(data, self.creds.api,
@@ -837,6 +888,13 @@ class OpenAIRuntime:
                 "role": "developer", "content": self._composition_snapshot}],
                 instructions=filtered.instructions)
 
+        self._compactor_config = RunConfig(model_provider=provider, tracing_disabled=True,
+                                           trace_include_sensitive_data=False,
+                                           call_model_input_filter=prepare_summary_input,
+                                           workflow_name="Qumus compaction",
+                                           group_id=self.gateway.project_id)
+        self._compactor_settings = ModelSettings(include_usage=True, preserve_raw_usage=True,
+                                                 max_tokens=self.compaction.summary_max_tokens)
         self._config = RunConfig(model_provider=provider, tracing_disabled=True,
                                  trace_include_sensitive_data=False,
                                  session_input_callback=(chat_session_input
@@ -883,9 +941,7 @@ class OpenAIRuntime:
                                         model=self.agent_model(name)['model'], model_settings=settings)
         for name in SUBAGENTS:
             self._agents[ORCHESTRATOR].tools.append(self._delegate_tool(name))
-        db_path = ":memory:" if self.store.path == ":memory:" else str(
-            Path(self.store.path).with_suffix(".openai-sessions.db"))
-        self._session = SQLiteSession(self.session_id, db_path=db_path)
+        self._session = SQLiteSession(self.session_id, db_path=self._sessions_db)
 
     def _response_cost(self, usage: Any, raw_usage: Any, role: str = ORCHESTRATOR) -> tuple[float, dict[str, Any]]:
         """Credit only measured cache reads; SDK defaults and cache writes are not evidence."""
@@ -1044,6 +1100,7 @@ class OpenAIRuntime:
         ok, reason = False, "error"
         try:
             self._ensure()
+            await self._fold_pending()  # a cut saved before a restart switches now
             self._composition_tasks[ORCHESTRATOR] = text if isinstance(text, str) else "\n".join(
                 part["text"] for item in text for part in item.get("content", [])
                 if isinstance(part, dict) and part.get("type") == "input_text" and isinstance(part.get("text"), str))
@@ -1085,6 +1142,7 @@ class OpenAIRuntime:
                 raise ReportedAgentError(message, event_id, outage=outage) from None
         finally:
             self._composition_tasks.pop(ORCHESTRATOR, None)
+            await self._fold_pending_safely()
             self.gateway.turn_finished(ok=ok)
             for role, message in self._last_messages.items():
                 self.gateway.save_agent_status(role, message)
@@ -1099,6 +1157,281 @@ class OpenAIRuntime:
             self._done.set()
             if self.budget_exhausted:
                 self._tell_exhausted()
+
+    # ----- context compaction (agents/compaction.py) -----------------------
+
+    def _last_reported_input(self) -> int | None:
+        """The orchestrator's last provider-reported input size in this session."""
+        try:
+            event = self.store.latest_event("agent.usage", agent=ORCHESTRATOR)
+        except Exception:  # noqa: BLE001 - a reading for the meter, never fatal
+            return None
+        if event is None or event.payload.get("session_id") != self.session_id:
+            return None
+        return event.payload.get("input_tokens") or None
+
+    def compaction_threshold(self) -> tuple[int, int | None]:
+        """(threshold tokens, orchestrator model window or None)."""
+        window = self.agent_model(ORCHESTRATOR)["context_window_tokens"]
+        return self.compaction.threshold(window), window
+
+    def _measured(self, tokens: int) -> None:
+        """An orchestrator request reported its input size."""
+        self._reported_tokens, self._estimated_tokens = tokens, None
+        after, self._after_compaction = self._after_compaction, None
+        if after is None:
+            return
+        threshold, _ = self.compaction_threshold()
+        if tokens >= threshold and self.compaction.auto and not after["shrunk"]:
+            self._shrink_next = True  # once more, keeping half as much
+            return
+        self._next_auto_at = tokens + self.compaction.min_growth_tokens
+        if tokens >= threshold:
+            self.store.emit("notification", {"level": "warn", "reason": "compaction_insufficient", "text": (
+                f"Context is still {tokens:,} tokens after compaction (automatic point {threshold:,}). "
+                "The run goes on; the next automatic compaction waits until the conversation grows by "
+                f"{self.compaction.min_growth_tokens:,} tokens.")})
+
+    def context_status(self) -> dict[str, Any]:
+        """What the web page's context meter shows."""
+        threshold, window = self.compaction_threshold()
+        chain = (self._project() or {}).get("state", {}).get("openai_session_chain") or []
+        s = self.compaction
+        return {"supported": True, "mode": self.mode, "model": self.agent_model(ORCHESTRATOR)["model"],
+                "auto": s.auto, "auto_disabled_by_env": compaction.disabled_by_env(),
+                "window_percent": s.window_percent, "window_tokens": window, "threshold_tokens": threshold,
+                "threshold_basis": "window" if window else "fallback",
+                "input_tokens": self._estimated_tokens if self._estimated_tokens is not None
+                else self._reported_tokens,
+                "estimated": self._estimated_tokens is not None,
+                "requested": self._manual is not None, "compacting": self._compacting,
+                "compactions": len(chain), "session_id": self.session_id,
+                "keep_recent_tokens": s.keep_recent_tokens}
+
+    def set_compaction_settings(self, values: dict[str, Any]) -> dict[str, Any]:
+        self.compaction = compaction.save_settings(self.store, self.gateway.project_id, self.cfg, values)
+        self._next_auto_at = None
+        return self.context_status()
+
+    def request_compaction(self, focus: str | None = None, instruction_id: str | None = None) -> None:
+        """A person asked: compact before the orchestrator's next request."""
+        self._manual = {"focus": (focus or "").strip() or None, "instruction_id": instruction_id}
+
+    @property
+    def compaction_requested(self) -> bool:
+        return self._manual is not None
+
+    async def compact_now(self, focus: str | None = None, instruction_id: str | None = None) -> bool:
+        """Compact the saved conversation while no turn runs (the Compact button
+        when idle). During a turn the request waits for the next model request."""
+        if focus is not None or instruction_id is not None or self._manual is None:
+            self.request_compaction(focus, instruction_id)
+        if self._busy:
+            return False
+        self._busy, self._interrupted = True, False
+        self._done.clear()
+        try:
+            self._ensure()
+            await self._fold_pending()
+            items = await self._session.get_items()
+            result = await self._compact(items, during_turn=False)
+            if result is not None:
+                await self._switch_session(items, result["cut"], result["summary_item"], result["event_id"])
+            return result is not None
+        except asyncio.CancelledError:
+            if not self._interrupted:
+                raise
+            return False
+        finally:
+            self._manual = None
+            self._busy = False
+            self._done.set()
+
+    def _compaction_due(self) -> tuple[str, int] | None:
+        """(trigger, tokens to keep) when the next orchestrator request compacts first."""
+        s = self.compaction
+        if self._manual is not None:
+            return "manual", s.keep_recent_tokens
+        if not s.auto:
+            return None
+        if self._shrink_next:
+            return "auto", max(1000, s.keep_recent_tokens // 2)
+        tokens = self._reported_tokens
+        if tokens is None or self._after_compaction is not None:
+            return None
+        threshold, _ = self.compaction_threshold()
+        if tokens < max(threshold, self._next_auto_at or 0):
+            return None
+        return "auto", s.keep_recent_tokens
+
+    async def _orchestrator_input(self, items: list[Any]) -> list[Any]:
+        """The orchestrator's request items: the active cut applied, and a new
+        compaction first when one is due. The SDK keeps (and saves) the full
+        list; only this request's copy changes."""
+        view, shown, offset = self._view, items, 0
+        if view is not None:
+            viewed = compaction.apply_view(items, view)
+            if viewed is None:
+                self._drop_view("the conversation before the cut changed")
+                view = None
+            else:
+                shown, offset = viewed, view["cut"] - 1
+        if self._compaction_due() is None:
+            return shown
+        result = await self._compact(shown, during_turn=True)
+        if result is None:
+            return shown
+        cut = result["cut"] + offset  # the same cut in the full (saved) list
+        self._view = {"session_id": self.session_id, "cut": cut, "anchor": compaction.anchor(items[cut - 1]),
+                      "summary_item": result["summary_item"], "event_id": result["event_id"]}
+        if self.gateway.project_id:
+            self.store.update_project_state(self.gateway.project_id, openai_compaction_pending=self._view)
+        return [result["summary_item"], *items[cut:]]
+
+    async def _compact(self, items: list[Any], *, during_turn: bool) -> dict[str, Any] | None:
+        """Summarize the items before a safe cut; record `context.compacted`.
+        Returns {cut, summary_item, event_id}; None when nothing was compacted
+        (nothing to fold, or the summary request failed: the run goes on)."""
+        due = self._compaction_due()
+        if due is None:
+            return None
+        trigger, keep = due
+        manual = self._manual or {}
+        self._manual = None
+        shrunk = self._shrink_next
+        self._shrink_next = False
+        before = self._reported_tokens
+        threshold, window = self.compaction_threshold()
+        cut = compaction.choose_cut(items, keep)
+        if cut is None:
+            self.store.emit("notification", {"level": "info", "reason": "compaction_nothing", "text": (
+                "Nothing to compact yet: the conversation is already short.")})
+            if trigger == "auto":
+                self._next_auto_at = (before or 0) + self.compaction.retry_after_tokens
+            return None
+        prefix, tail = items[:cut], items[cut:]
+        self._compacting = True
+        try:
+            summary = await self._summarize(prefix, manual.get("focus"))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a failed summary never stops the experiment
+            self._budget_hit = None
+            if self._interrupted:
+                raise asyncio.CancelledError from exc
+            retry = (before or 0) + self.compaction.retry_after_tokens
+            if trigger == "auto":
+                self._next_auto_at = retry
+            message = scrub_text(str(exc), [self.creds.api_key])[:500] or type(exc).__name__
+            self.store.emit("notification", {"level": "warn", "reason": "compaction_failed", "text": (
+                f"Context compaction failed ({message}). The run goes on with the full conversation"
+                + (f"; Qumus tries again after {self.compaction.retry_after_tokens:,} more tokens."
+                   if trigger == "auto" else "."))}, agent=COMPACTOR)
+            return None
+        finally:
+            self._compacting = False
+        when = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        item = compaction.summary_item(summary, folded=len(prefix), when=when)
+        folded_est = sum(compaction.item_tokens(i) for i in prefix)
+        kept_est = sum(compaction.item_tokens(i) for i in tail)
+        summary_est = compaction.item_tokens(item)
+        after = (max(summary_est + kept_est, before - folded_est + summary_est) if before
+                 else summary_est + kept_est)
+        usage = self._compactor_usage
+        event_id = self.store.emit("context.compacted", {
+            "trigger": trigger, "during_turn": during_turn, "session_id": self.session_id,
+            "model": self.agent_model(ORCHESTRATOR)["model"],
+            "tokens_before": before, "estimated_tokens_after": after,
+            "threshold_tokens": threshold, "window_tokens": window,
+            "window_percent": self.compaction.window_percent,
+            "folded_items": len(prefix), "kept_items": len(tail),
+            "estimated_folded_tokens": folded_est, "estimated_kept_tokens": kept_est,
+            "keep_recent_tokens": keep, "shrunk": shrunk,
+            "summary": summary, "summary_output_tokens": usage.get("output_tokens"),
+            "cost_usd": usage.get("cost_usd", 0.0), "focus": manual.get("focus"),
+            "instruction_id": manual.get("instruction_id"),
+            "estimate_method": "utf8_bytes_div4_v1"}, agent=COMPACTOR)
+        self._estimated_tokens = after
+        self._after_compaction = {"shrunk": shrunk or keep < self.compaction.keep_recent_tokens}
+        self._next_auto_at = None
+        return {"cut": cut, "summary_item": item, "event_id": event_id}
+
+    async def _summarize(self, prefix: list[Any], focus: str | None) -> str:
+        """One separate request to the orchestrator's model, through the same
+        provider, budget hooks and pacing; Stop cancels it."""
+        from agents import Agent, Runner
+
+        if self._compactor_agent is None:
+            self._compactor_agent = Agent(name=COMPACTOR, instructions=compaction.SUMMARY_INSTRUCTIONS,
+                                          tools=[], model=self.agent_model(ORCHESTRATOR)["model"],
+                                          model_settings=self._compactor_settings)
+        request = compaction.summary_request(compaction.render_transcript(prefix), focus)
+        self._compactor_usage = {}
+        self._compaction_task = asyncio.ensure_future(Runner.run(
+            self._compactor_agent, request, run_config=self._compactor_config, hooks=self._hooks,
+            max_turns=1))
+        try:
+            result = await self._compaction_task
+        finally:
+            self._compaction_task = None
+        text = str(result.final_output or "").strip()
+        if not text:
+            raise RuntimeError("the model returned an empty summary")
+        return text
+
+    def _drop_view(self, why: str) -> None:
+        self._view = None
+        if self.gateway.project_id:
+            self.store.update_project_state(self.gateway.project_id, openai_compaction_pending=None)
+        self.store.emit("notification", {"level": "warn", "reason": "compaction_dropped", "text": (
+            f"An earlier context compaction could not be applied ({why}); the conversation "
+            "continues in full and is compacted again when needed.")}, agent=COMPACTOR)
+
+    async def _fold_pending(self) -> None:
+        """Switch to a new session holding [summary, *items after the cut]."""
+        view = self._view
+        if view is None or self._session is None:
+            return
+        if view.get("session_id") != self.session_id:
+            self._drop_view("the conversation was replaced")
+            return
+        saved = await self._session.get_items()
+        cut = compaction.find_cut(saved, view["cut"], view["anchor"])
+        if cut is None:
+            self._drop_view("the cut was not found in the saved conversation")
+            return
+        await self._switch_session(saved, cut, view["summary_item"], view.get("event_id"))
+
+    async def _fold_pending_safely(self) -> None:
+        try:
+            await self._fold_pending()
+        except asyncio.CancelledError:
+            pass  # the cut stays saved; the next turn switches
+        except Exception as exc:  # noqa: BLE001 - the next turn tries again
+            self.store.emit("notification", {"level": "warn", "reason": "compaction_switch_failed", "text": (
+                f"The compacted conversation could not be saved yet ({type(exc).__name__}); "
+                "Qumus tries again at the next turn.")}, agent=COMPACTOR)
+
+    async def _switch_session(self, saved: list[Any], cut: int, item: dict[str, Any],
+                              event_id: int | None) -> None:
+        """The old session stays in the sessions database, word for word."""
+        from agents import SQLiteSession
+
+        new_id = f"openai-{uuid4().hex}"
+        session = SQLiteSession(new_id, db_path=self._sessions_db)
+        await session.add_items([item, *(compaction.plain(i) for i in saved[cut:])])
+        old_id, old = self.session_id, self._session
+        self._session, self.session_id, self._view = session, new_id, None
+        if old is not None and self._sessions_db != ":memory:":
+            old.close()  # (an in-memory session would lose its archive when closed)
+        link = {"from": old_id, "to": new_id, "event_id": event_id, "folded_items": cut,
+                "kept_items": len(saved) - cut, "at": time.time()}
+        if self.gateway.project_id:
+            chain = list((self._project() or {}).get("state", {}).get("openai_session_chain") or [])
+            self.store.update_project_state(self.gateway.project_id, openai_session_id=new_id,
+                                            openai_session_chain=[*chain, link],
+                                            openai_compaction_pending=None)
+        self.store.emit("context.session_changed", {**link, "reason": "compaction"}, agent=COMPACTOR)
 
     def _tell_exhausted(self) -> None:
         if not self._exhausted_told:
@@ -1116,6 +1449,8 @@ class OpenAIRuntime:
         self._interrupted = True
         if self._pacing_wait is not None:
             self._pacing_wait.cancel()
+        if self._compaction_task is not None:
+            self._compaction_task.cancel()
         if self._active is not None:
             self._active.cancel(mode="immediate")
         self.store.emit("agent.interrupted", {"reason": "user stop"}, agent=ORCHESTRATOR)

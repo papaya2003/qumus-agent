@@ -48,6 +48,7 @@ from typing import Any
 
 import yaml
 
+from qumus2.agents import compaction
 from qumus2.agents.gateway import ToolGateway
 from qumus2.agents.tooling import ToolResult
 from qumus2.agents.tools.picking import has_images, require_images
@@ -105,6 +106,13 @@ class ScriptedRuntime:
         self._go.set()
         self.saved: dict[str, dict[str, Any]] = {}
         self.results: list[Any] = []  # (agent, tool, ToolResult) for tests
+        from qumus2.config import load_yaml
+
+        self._cfg = load_yaml("agents.yaml")
+        project_id = getattr(gateway, "project_id", None)
+        project = self.store.get_project(project_id) if project_id else None
+        self.compaction = compaction.load_settings(self._cfg, (project or {}).get("state", {}))
+        self._compactions = 0
 
     @property
     def busy(self) -> bool:
@@ -164,6 +172,42 @@ class ScriptedRuntime:
         finally:
             self.gateway.turn_finished(ok=ok)
             self._busy = False
+
+    # Compaction: no model and no saved conversation here, so the Compact
+    # button records a fixed, free summary at once (it tests the page and flow).
+
+    def context_status(self) -> dict[str, Any]:
+        s = self.compaction
+        return {"supported": True, "mode": self.mode, "model": None, "auto": s.auto,
+                "auto_disabled_by_env": compaction.disabled_by_env(),
+                "window_percent": s.window_percent, "window_tokens": None,
+                "threshold_tokens": s.threshold(None), "threshold_basis": "fallback",
+                "input_tokens": None, "estimated": False, "requested": False, "compacting": False,
+                "compactions": self._compactions, "session_id": None,
+                "keep_recent_tokens": s.keep_recent_tokens}
+
+    def set_compaction_settings(self, values: dict[str, Any]) -> dict[str, Any]:
+        self.compaction = compaction.save_settings(self.store, self.gateway.project_id, self._cfg, values)
+        return self.context_status()
+
+    def request_compaction(self, focus: str | None = None, instruction_id: str | None = None) -> None:
+        self._compactions += 1
+        summary = ("## Current goal and plan position\n(scripted mode: fixed summary, no model was asked)\n\n"
+                   "## Human requests and constraints\n-\n\n## Decisions and reasons\n-\n\n"
+                   "## Tried and failed\n-\n\n## Waiting for\n-\n\n## Important identifiers\n-")
+        self.store.emit("context.compacted", {
+            "trigger": "manual", "during_turn": self._busy, "scripted": True, "session_id": None,
+            "model": None, "tokens_before": None, "estimated_tokens_after": None,
+            "threshold_tokens": self.compaction.threshold(None), "window_tokens": None,
+            "window_percent": self.compaction.window_percent, "folded_items": 0, "kept_items": 0,
+            "summary": summary, "cost_usd": 0.0, "focus": (focus or "").strip() or None,
+            "instruction_id": instruction_id}, agent=compaction.COMPACTOR)
+
+    compaction_requested = False
+
+    async def compact_now(self, focus: str | None = None, instruction_id: str | None = None) -> bool:
+        self.request_compaction(focus, instruction_id)
+        return True
 
     async def continue_turn(self, text: str) -> None:
         """Continue after Stop: the suspended turn goes on where it stopped (a

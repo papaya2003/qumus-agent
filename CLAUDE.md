@@ -62,6 +62,9 @@ web page (qumus2/ui) -> ConversationDriver (agents/driver.py) -> AgentRuntime
 - The brain must never import lab code: `tests/test_stations.py` fails if `qumus_simlab`/lab packages are imported.
 - Tests run the brain against `stations/fake_lab.py`: three fake stations on loopback that share one lab-side
   store and finish each job at once with an outcome the test chooses (the `services` fixture in `tests/conftest.py`).
+- Context compaction (`agents/compaction.py`, `docs/runtime.md`): only the orchestrator's SDK session; auto at
+  50% of the model's window (`compaction:` in agents.yaml, per project from the page), manual via `POST /api/compact`.
+  A compaction starts a new session `[summary, *recent items]`; old sessions stay in `<run>.openai-sessions.db`.
 - Run data (`runs/workspace`, `runs/checks`, `runs/archive`, `runs/layout.json`, budget ledger) is private; keep
   the layout file and ledger together when relocating (`docs/run-data.md`). Budget and gateway setup: `docs/runtime.md`.
 

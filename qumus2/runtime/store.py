@@ -106,7 +106,7 @@ CREATE INDEX IF NOT EXISTS event_lab_id ON event(json_extract(payload_json, '$.l
 RUN_STATUSES = {"queued", "running", "waiting_human", "parked", "paused", "succeeded",
                 "failed", "cancelled"}
 STEP_STATUSES = {"in_progress", "done", "failed", "skipped"}
-INSTRUCTION_KINDS = {"message", "plan_change", "veto", "stop", "continue"}
+INSTRUCTION_KINDS = {"message", "plan_change", "veto", "stop", "continue", "compact"}
 BENCHES = {"sim", "real"}
 EXPERIENCE_STATUSES = {"trial", "confirmed", "retired"}
 EXPERIENCE_SOURCES = {"review", "human", "prior"}
@@ -355,6 +355,16 @@ class RunStore:
         return [Event(id=r["id"], ts=r["ts"], kind=r["kind"], run_id=r["run_id"],
                       agent=r["agent"], payload=_uj(r["payload_json"], {}))
                 for r in self._x(sql, args).fetchall()]
+
+    def latest_event(self, kind: str, *, agent: str | None = None) -> Event | None:
+        """The newest event of one kind (and agent), or None."""
+        sql = "SELECT * FROM event WHERE kind = ?" + (" AND agent = ?" if agent is not None else "")
+        row = self._x(sql + " ORDER BY id DESC LIMIT 1",
+                      (kind, agent) if agent is not None else (kind,)).fetchone()
+        if row is None:
+            return None
+        return Event(id=row["id"], ts=row["ts"], kind=row["kind"], run_id=row["run_id"],
+                     agent=row["agent"], payload=_uj(row["payload_json"], {}))
 
     def run_ids_since(self, after_id: int) -> set[str]:
         """The jobs that wrote an event after `after_id` (this session's jobs)."""

@@ -41,7 +41,7 @@ export const post = (path, body) => api(path, { method: 'POST', headers: { 'cont
 // The orchestrator is "Qumus" on the page; agent ids (C10) stay as they are.
 export const AGENTS = ['orchestrator', 'advisor', 'eyes', 'hands', 'picker', 'designer', 'reactor'];
 const LABELS = { orchestrator: 'Qumus', advisor: 'Advisor', eyes: 'Eyes', hands: 'Hands', picker: 'Picker',
-  designer: 'Designer', reactor: 'Reactor', user: 'You', system: 'System' };
+  designer: 'Designer', reactor: 'Reactor', compactor: 'Compaction', user: 'You', system: 'System' };
 const MONO = { orchestrator: 'Q', advisor: 'A', eyes: 'E', hands: 'H', picker: 'P', designer: 'D', reactor: 'R', user: 'Y', system: '·' };
 export const ROLES = { orchestrator: 'Plans and leads', advisor: 'Device Guidance', eyes: 'Looks and checks', hands: 'Runs the hardware',
   picker: 'Chooses flakes', designer: 'Draws the layout', reactor: 'Controls the virtual reactor' };

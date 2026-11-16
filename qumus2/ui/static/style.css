@@ -1,27 +1,31 @@
-/* Qumus v2 UI (spec 11.3). Restrained palette, two themes, motion only on
-   state changes. All colours are tokens; dark theme redefines them. */
+/* Qumus v2 UI (spec 11.3) in the Hearth design system, like the lab bench page in qumus-lab: cream canvas,
+   Inter text, a serif (Cormorant Garamond) only for large display titles, coral used scarcely, dark surfaces
+   for camera pictures. All colours are tokens; the dark theme redefines them in Hearth's dark surfaces.
+   Exception to Hearth on purpose: Stop is a red (error) fill, never coral. Offline the fonts fall back to the
+   system faces. */
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 :root {
-  --bg: #f6f5f2;
-  --panel: #ffffff;
-  --panel-2: #faf9f7;
-  --ink: #17171a;
-  --ink-2: #4a4a52;
-  --muted: #8a8a93;
-  --line: #e8e6e1;
-  --line-2: #f0eeea;
-  --accent: #3d5afe;
-  --accent-soft: rgba(61, 90, 254, 0.09);
-  --ok: #1f9d6b;
-  --ok-soft: rgba(31, 157, 107, 0.11);
-  --warn: #c27a12;
-  --warn-soft: rgba(194, 122, 18, 0.12);
-  --danger: #d6453d;
-  --danger-soft: rgba(214, 69, 61, 0.1);
-  --bench: #fbfaf8;
-  --bench-grid: #eeece7;
-  --bench-grid-2: #e2dfd8;
-  --region: #f1efea;
+  --bg: #f5f0e8;
+  --panel: #faf9f5;
+  --panel-2: #f5f0e8;
+  --ink: #141413;
+  --ink-2: #3d3d3a;
+  --muted: #6c6a64;
+  --line: #e6dfd8;
+  --line-2: #ebe6df;
+  --accent: #a9583e;
+  --accent-soft: rgba(204, 120, 92, 0.12);
+  --ok: #2f7d4a;
+  --ok-soft: rgba(93, 184, 114, 0.15);
+  --warn: #a8640e;
+  --warn-soft: rgba(232, 165, 90, 0.18);
+  --danger: #c64545;
+  --danger-soft: rgba(198, 69, 69, 0.1);
+  --bench: #fbf9f4;
+  --bench-grid: #efe9de;
+  --bench-grid-2: #e8e0d2;
+  --region: #efe9de;
   --chip: #6f7bf7;
   --chip-edge: #3d4ad1;
   --carrier: #9a6b3f;
@@ -34,55 +38,56 @@
   --m-tmd: #b67fd0;
   --m-metal: #d4a63a;
   --m-other: #9aa3ad;
-  --shadow: 0 1px 2px rgba(20, 20, 30, 0.04), 0 4px 16px rgba(20, 20, 30, 0.04);
-  --a-orchestrator: #17171a;
+  --shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --a-orchestrator: #141413;
   --a-advisor: #7c5cd6;
-  --a-eyes: #0f9b8e;
-  --a-hands: #d9822b;
-  --a-picker: #d4537e;
-  --a-designer: #2f80d1;
-  --a-user: #3d5afe;
-  --radius: 14px;
+  --a-eyes: #2e8f80;
+  --a-hands: #c4692a;
+  --a-picker: #c4527a;
+  --a-designer: #2f74b8;
+  --a-user: #a9583e;
+  --radius: 12px;
   --r-card: 12px;
-  --scope-bg: #0d0f14;
+  --scope-bg: #181715;
   --brand-ink: #1c2350;
   --brand-cyan: #3fb8c7;
-  --scroll-thumb: rgba(23, 23, 26, 0.16);
-  --scroll-thumb-hover: rgba(23, 23, 26, 0.32);
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
-    "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --scroll-thumb: rgba(20, 20, 19, 0.16);
+  --scroll-thumb-hover: rgba(20, 20, 19, 0.32);
+  --font: Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Segoe UI", system-ui, sans-serif;
+  --serif: "Cormorant Garamond", "EB Garamond", Garamond, "Songti SC", "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0e0e11; --panel: #16161a; --panel-2: #1b1b20; --ink: #ededf0; --ink-2: #b9b9c2;
-    --muted: #7c7c87; --line: #26262d; --line-2: #1f1f25; --accent: #7b8cff;
-    --accent-soft: rgba(123, 140, 255, 0.13); --ok: #3ccf92; --ok-soft: rgba(60, 207, 146, 0.13);
-    --warn: #e9a23b; --warn-soft: rgba(233, 162, 59, 0.14); --danger: #ff6b61;
-    --danger-soft: rgba(255, 107, 97, 0.13); --bench: #131317; --bench-grid: #1d1d23;
-    --bench-grid-2: #26262e; --region: #1c1c22; --chip: #8f9aff; --chip-edge: #c3c9ff; --carrier: #c49166; --stamp: #6cc4f0;
+    --bg: #181715; --panel: #1f1e1b; --panel-2: #252320; --ink: #faf9f5; --ink-2: #d6d2c9;
+    --muted: #a09d96; --line: #34312c; --line-2: #2a2825; --accent: #e0937a;
+    --accent-soft: rgba(224, 147, 122, 0.14); --ok: #6fc585; --ok-soft: rgba(111, 197, 133, 0.14);
+    --warn: #e8b34a; --warn-soft: rgba(232, 179, 74, 0.15); --danger: #ef7a6e;
+    --danger-soft: rgba(239, 122, 110, 0.14); --bench: #1b1a17; --bench-grid: #26241f;
+    --bench-grid-2: #302d27; --region: #252320; --chip: #8f9aff; --chip-edge: #c3c9ff; --carrier: #c49166; --stamp: #6cc4f0;
     --tape: rgba(120, 112, 84, 0.6); --tape-edge: #8d825d; --holder: #9fb0c2;
     --m-hbn: #7fb0e0; --m-gr: #c8c8d0; --m-tmd: #c99ae0; --m-metal: #e2b84e; --m-other: #8a939d;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
-    --a-orchestrator: #ededf0; --a-advisor: #a68bff; --a-eyes: #36c7b8; --a-hands: #f0a050;
-    --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff; --scroll-thumb: rgba(237, 237, 240, 0.16); --scroll-thumb-hover: rgba(237, 237, 240, 0.32); --brand-cyan: #5fd4e0;
+    --a-orchestrator: #faf9f5; --a-advisor: #a68bff; --a-eyes: #5db8a6; --a-hands: #e8a55a;
+    --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #e0937a; --scroll-thumb: rgba(250, 249, 245, 0.16); --scroll-thumb-hover: rgba(250, 249, 245, 0.32); --brand-cyan: #5fd4e0;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0e0e11; --panel: #16161a; --panel-2: #1b1b20; --ink: #ededf0; --ink-2: #b9b9c2;
-  --muted: #7c7c87; --line: #26262d; --line-2: #1f1f25; --accent: #7b8cff;
-  --accent-soft: rgba(123, 140, 255, 0.13); --ok: #3ccf92; --ok-soft: rgba(60, 207, 146, 0.13);
-  --warn: #e9a23b; --warn-soft: rgba(233, 162, 59, 0.14); --danger: #ff6b61;
-  --danger-soft: rgba(255, 107, 97, 0.13); --bench: #131317; --bench-grid: #1d1d23;
-  --bench-grid-2: #26262e; --region: #1c1c22; --chip: #8f9aff; --chip-edge: #c3c9ff; --carrier: #c49166; --stamp: #6cc4f0;
+  --bg: #181715; --panel: #1f1e1b; --panel-2: #252320; --ink: #faf9f5; --ink-2: #d6d2c9;
+  --muted: #a09d96; --line: #34312c; --line-2: #2a2825; --accent: #e0937a;
+  --accent-soft: rgba(224, 147, 122, 0.14); --ok: #6fc585; --ok-soft: rgba(111, 197, 133, 0.14);
+  --warn: #e8b34a; --warn-soft: rgba(232, 179, 74, 0.15); --danger: #ef7a6e;
+  --danger-soft: rgba(239, 122, 110, 0.14); --bench: #1b1a17; --bench-grid: #26241f;
+  --bench-grid-2: #302d27; --region: #252320; --chip: #8f9aff; --chip-edge: #c3c9ff; --carrier: #c49166; --stamp: #6cc4f0;
   --tape: rgba(120, 112, 84, 0.6); --tape-edge: #8d825d; --holder: #9fb0c2;
   --m-hbn: #7fb0e0; --m-gr: #c8c8d0; --m-tmd: #c99ae0; --m-metal: #e2b84e; --m-other: #8a939d;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
-  --a-orchestrator: #ededf0; --a-advisor: #a68bff; --a-eyes: #36c7b8; --a-hands: #f0a050;
-  --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #7b8cff; --scroll-thumb: rgba(237, 237, 240, 0.16); --scroll-thumb-hover: rgba(237, 237, 240, 0.32); --brand-cyan: #5fd4e0;
+  --a-orchestrator: #faf9f5; --a-advisor: #a68bff; --a-eyes: #5db8a6; --a-hands: #e8a55a;
+  --a-picker: #f07aa3; --a-designer: #5aa7f0; --a-user: #e0937a; --scroll-thumb: rgba(250, 249, 245, 0.16); --scroll-thumb-hover: rgba(250, 249, 245, 0.32); --brand-cyan: #5fd4e0;
   color-scheme: dark;
 }
 
@@ -119,9 +124,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   grid-template-areas: "title title title title" "act side ed lab" "problems problems problems problems" "sb sb sb sb";
 }
 .tbar { grid-area: title; display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(0, auto) minmax(max-content, 1fr); align-items: center; gap: 12px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); min-width: 0; }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; font-size: 14px; }
+.brand { display: flex; align-items: center; gap: 9px; font: 500 21px/1 var(--serif); letter-spacing: -0.3px; }
 .brand-mark { width: 24px; height: 24px; border-radius: 7px; display: block; flex: none; box-shadow: 0 1px 2px rgba(17, 20, 43, .25); }
-.brand small { font-weight: 560; color: var(--muted); font-size: 10.5px; margin-left: -2px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); line-height: 16px; letter-spacing: .02em; }
+.brand small { font: 500 10.5px/16px var(--font); color: var(--muted); margin-left: -2px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line); line-height: 16px; letter-spacing: .02em; }
 .title-right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-width: 0; }
 /* the one sentence: step · who does what · for how long · last check; its column
    shrinks so a long sentence ends in "…" instead of running under the right side */
@@ -306,10 +311,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .settings-scroll { padding: 0; }
 .settings-content { max-width: 1140px; margin: 0 auto; padding: 32px 36px 48px; }
 .settings-page-header { margin-bottom: 26px; }
-.settings-page-header h1 { font-size: 27px; letter-spacing: -.03em; margin: 0 0 4px; }
+.settings-page-header h1 { font: 500 38px/1.1 var(--serif); letter-spacing: -0.5px; margin: 0 0 4px; }
 .settings-page-header p, .settings-section-heading p { margin: 4px 0 0; }
 .settings-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; min-width: 0; }
-.settings-card h2 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+.settings-card h2 { margin: 0; font: 500 24px/1.2 var(--serif); letter-spacing: -0.3px; }
 .settings-card h3 { margin: 0; font-size: 14px; }
 .settings-section-heading { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 22px; }
 .settings-section-heading .tag { flex: none; background: var(--accent-soft); color: var(--accent); }
@@ -560,7 +565,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .empty { margin: auto; text-align: center; padding: 30px 10px; color: var(--muted); }
 .empty .empty-mark { display: block; margin: 0 auto 14px; border-radius: 15px; box-shadow: 0 8px 24px rgba(10, 30, 90, .26); }
-.empty h3 { color: var(--ink); font-size: 17px; font-weight: 620; margin: 0 0 6px; letter-spacing: -0.005em; }
+.empty h3 { color: var(--ink); font: 500 30px/1.15 var(--serif); margin: 0 0 8px; letter-spacing: -0.3px; }
 .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
 .suggest button {
   border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 12px;
@@ -591,8 +596,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .send:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
 .send:disabled { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--muted); opacity: 1; cursor: default; }
 .send:focus-visible, .stop-btn:focus-visible, .go-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.stop-btn { background: var(--ink); color: var(--bg); }
-.stop-btn:hover, .stop-btn.armed { background: var(--danger); color: #fff; }
+.stop-btn { background: var(--danger); color: #fff; }
+.stop-btn:hover, .stop-btn.armed { background: color-mix(in srgb, var(--danger) 82%, #000); color: #fff; }
 .stop-btn.quiet { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .stop-btn.quiet:hover { background: var(--danger-soft); color: var(--danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 35%, transparent); }
 .stop-btn i { width: 10px; height: 10px; border-radius: 2.5px; background: currentColor; }

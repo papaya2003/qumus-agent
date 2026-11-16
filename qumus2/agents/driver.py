@@ -80,6 +80,17 @@ class ConversationDriver:
         self.outage_waits_s: tuple[float, ...] = OUTAGE_WAITS_S
         self.outage_max_s: float | None = outage_max_s()
 
+    @property
+    def idle(self) -> bool:
+        """No turn runs or is about to start, and no automatic continue is waiting."""
+        return not self.runtime.busy and (self._turn is None or self._turn.done())
+
+    def switch_project(self) -> None:
+        """A switch of conversation (qumus2/conversations.py, only while idle):
+        a Stop note or shown instructions of the previous one do not carry over."""
+        self._note_due = False
+        self.inbox = Inbox(self.store)
+
     async def tick(self) -> None:
         for s in self.inbox.drain(kinds=("stop",)):
             await self._stop(s)

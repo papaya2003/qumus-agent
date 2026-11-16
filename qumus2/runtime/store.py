@@ -12,8 +12,10 @@ CONTRACT. Tables:
   sample         "ledger of the physical world": where every chip/flake/stamp is
   heartbeat      liveness of long-running processes (lab process; supervisor reads it)
   meta           store-wide settings; `bench` = "sim" (testbench) or "real" (lab hardware);
-                 `sessions` = where each `serve` began (a JSON list of event ids, oldest
-                 first: a session is the events after its id up to the next one's)
+                 `sessions` = where each session began (a JSON list of event ids, oldest
+                 first: a session is the events after its id up to the next one's);
+                 `session_projects` = which conversation (project) each session belongs
+                 to ({after_id: project_id}); `active_project` = the conversation in use
   experience     what the lab learned (records/experience.py): claim, status, evidence
   experience_vote  one real run that supported or contradicted an experience
 
@@ -293,13 +295,49 @@ class RunStore:
         except (TypeError, ValueError):
             return []
 
-    def begin_session(self, after_id: int) -> None:
+    def begin_session(self, after_id: int, project_id: str | None = None) -> None:
         """A new session starts after event `after_id` (the UI's "this run";
-        earlier sessions are its History)."""
+        earlier sessions are its History). A session starts at every `serve` and
+        at every switch of conversation; `project_id` is the conversation it
+        belongs to."""
         with self._lock:
             ids = self.sessions()
             if after_id not in ids:
                 self.set_meta("sessions", json.dumps(sorted([*ids, int(after_id)])))
+            if project_id is not None:
+                tags = self._session_projects()
+                tags[int(after_id)] = project_id
+                self.set_meta("session_projects", json.dumps({str(k): v for k, v in sorted(tags.items())}))
+
+    def _session_projects(self) -> dict[int, str]:
+        try:
+            return {int(k): str(v) for k, v in json.loads(self.get_meta("session_projects") or "{}").items()}
+        except (TypeError, ValueError, AttributeError):
+            return {}
+
+    def session_project(self, after_id: int) -> str | None:
+        """The conversation (project id) of the session that holds the events
+        after `after_id`. Sessions from before conversations were kept belong to
+        the first project."""
+        tags = self._session_projects()
+        started = [a for a in tags if a <= after_id]
+        if started:
+            return tags[max(started)]
+        return self.first_project_id()
+
+    def first_project_id(self) -> str | None:
+        r = self._x("SELECT id FROM project ORDER BY created_at, rowid LIMIT 1").fetchone()
+        return r["id"] if r else None
+
+    def active_project_id(self) -> str | None:
+        """The conversation in use (meta `active_project`), if it still exists."""
+        pid = self.get_meta("active_project")
+        return pid if pid and self.get_project(pid) is not None else None
+
+    def set_active_project(self, project_id: str) -> None:
+        if self.get_project(project_id) is None:
+            raise KeyError(project_id)
+        self.set_meta("active_project", project_id)
 
     def close(self) -> None:
         # under the lock: a background reader (record mirror, recorder) then gets
@@ -413,7 +451,8 @@ class RunStore:
         r = self._x("SELECT * FROM project WHERE id = ?", (project_id,)).fetchone()
         if r is None:
             return None
-        return {"id": r["id"], "name": r["name"], "state": _uj(r["state_json"], {}),
+        return {"id": r["id"], "name": r["name"], "created_at": r["created_at"],
+                "state": _uj(r["state_json"], {}),
                 "plan": _uj(r["plan_json"], []), "plan_revision": r["plan_revision"],
                 "plan_version": r["plan_version"],
                 "session_id": r["session_id"], "updated_at": r["updated_at"]}

@@ -40,6 +40,17 @@ export function diagnosticPresentation(rec) {
   return p;
 }
 
+// History rows (newest first) as [{id, name, runs}], in order of each conversation's newest run.
+export function groupByConversation(runs) {
+  const groups = new Map();
+  for (const r of runs) {
+    const c = r.conversation || {}, key = c.id || '';
+    if (!groups.has(key)) groups.set(key, { id: c.id || null, name: (c.name || 'Earlier runs') + (c.owner ? ` · ${c.owner}` : ''), runs: [] });
+    groups.get(key).runs.push(r);
+  }
+  return [...groups.values()];
+}
+
 export class HistoryView {
   // ctx: { live() serve (it has a run store); playing() -> {rec, run} on screen;
   // play(target) reload on a run; photo(src); faultText(p); changed(part); showRight(); dctx() }
@@ -164,9 +175,15 @@ export class HistoryView {
       : [h('div', { class: 'placeholder', text: this.recs ? 'No demonstration recording in recordings/ on this computer.' : 'Loading…' })]));
     rows.push(h('div', { class: 'sec-t', text: 'Simulated lab' }));
     if (this.ctx.current?.()) rows.push(row({ kind: 'current', id: 'live' }, 'Current run', ['Live context']));
-    for (const r of this.runs || []) {
-      rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
-        r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
+    // Grouped by conversation (qumus2/conversations.py) once there is more than one:
+    // the most recently used conversation first, its runs newest first.
+    const groups = groupByConversation(this.runs || []);
+    for (const g of groups) {
+      if (groups.length > 1) rows.push(h('div', { class: 'hist-conv', title: 'Conversation', text: g.name }));
+      for (const r of g.runs) {
+        rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
+          r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
+      }
     }
     if (!(this.runs || []).length && !this.ctx.current?.()) {
       rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No run on this computer yet.' : 'Loading…' }));

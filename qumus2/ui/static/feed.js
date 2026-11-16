@@ -531,6 +531,13 @@ export class Feed {
         this.append(h('div', { class: 'turnend item' + (p.is_error && p.reason !== 'interrupted' ? ' bad' : '') }, h('span', { text: bits.join(' · ') })));
         break;
       }
+      case 'conversation.switched':
+        this.append(h('div', { class: 'divider item' }, h('span', {},
+          h('b', { text: p.created ? 'New conversation' : 'Back to conversation' }), ` · ${p.name || ''}`,
+          p.owner ? ` · by ${p.owner}` : '',
+          p.created ? ' · starts blank; the lab and its samples are shared'
+            : ' · Qumus remembers it; its earlier messages are in History')));
+        break;
       case 'model.changed':
         this.append(h('div', { class: 'divider item' }, h('span', { text: `Next task model: ${p.model} · fresh conversation context` })));
         break;

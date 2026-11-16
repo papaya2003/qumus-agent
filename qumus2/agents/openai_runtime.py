@@ -436,28 +436,13 @@ class OpenAIRuntime:
         self._pre_send_admission = pre_send_admission
         self._http_max_retries = http_max_retries_from_env(http_max_retries)
         self.gateway, self.store, self.creds = gateway, gateway.store, creds
-        state = (self._project() or {}).get('state', {})
+        self._base_creds = creds  # before a conversation's own model choice (switch_project)
         self._context_defaults = context_defaults(creds)
-        self._context_overrides = context_overrides(state, creds)
-        self._context_limits = self._context_defaults | self._context_overrides
         self._context_default_sources = {model: 'administrator_table' if limit else None
                                          for model, limit in self._context_defaults.items()}
         if creds.context_window_tokens:
             self._context_default_sources[creds.model_id] = 'configured'
-        saved = state.get('openai_model_config') or {}
-        self._agent_models = agent_model_choices(saved.get('agent_models', {})) if (
-            saved.get('base_url') == creds.base_url) else {}
-        if saved.get('base_url') == creds.base_url:
-            # Legacy settings cannot borrow a cache quote from another model or tariff.
-            same_tariff = (saved.get('model'), saved.get('input_price'), saved.get('output_price')) == (
-                creds.model_id, creds.input_price, creds.output_price)
-            self.creds = replace(creds, model_id=saved['model'], input_price=saved['input_price'],
-                                 output_price=saved['output_price'],
-                                 cached_input_price=saved.get('cached_input_price',
-                                     creds.cached_input_price if same_tariff else None),
-                                 context_window_tokens=self._context_limits.get(saved['model']))
-        else:
-            self.creds = replace(creds, context_window_tokens=self._context_limits.get(creds.model_id))
+        self._apply_project_settings(creds)
         self.cfg = config if config is not None else load_yaml("agents.yaml")
         self.run_budget_usd = run_budget_usd
         self._model_provider = model_provider  # test injection, real SDK loop in both cases
@@ -502,6 +487,27 @@ class OpenAIRuntime:
 
     def _project(self) -> dict[str, Any] | None:
         return self.store.get_project(self.gateway.project_id) if self.gateway.project_id else None
+
+    def _apply_project_settings(self, creds: OpenAICredentials) -> None:
+        """The model, rates and context limits the current conversation chose
+        (project state), on top of the configured credentials."""
+        state = (self._project() or {}).get('state', {})
+        self._context_overrides = context_overrides(state, creds)
+        self._context_limits = self._context_defaults | self._context_overrides
+        saved = state.get('openai_model_config') or {}
+        self._agent_models = agent_model_choices(saved.get('agent_models', {})) if (
+            saved.get('base_url') == creds.base_url) else {}
+        if saved.get('base_url') == creds.base_url:
+            # Legacy settings cannot borrow a cache quote from another model or tariff.
+            same_tariff = (saved.get('model'), saved.get('input_price'), saved.get('output_price')) == (
+                creds.model_id, creds.input_price, creds.output_price)
+            self.creds = replace(creds, model_id=saved['model'], input_price=saved['input_price'],
+                                 output_price=saved['output_price'],
+                                 cached_input_price=saved.get('cached_input_price',
+                                     creds.cached_input_price if same_tariff else None),
+                                 context_window_tokens=self._context_limits.get(saved['model']))
+        else:
+            self.creds = replace(creds, context_window_tokens=self._context_limits.get(creds.model_id))
 
     def _context_limit_source(self, model: str) -> str | None:
         if not self._context_limits.get(model):
@@ -607,6 +613,42 @@ class OpenAIRuntime:
                             'output_price': output_price, 'cost_basis': 'configured_token_rates'})
             self.store.emit('model.routing_changed', {'agent_models': self.model_settings()['effective_models'],
                             'session_id': self.session_id})
+        finally:
+            self._busy = False
+            self._done.set()
+
+    async def switch_project(self) -> None:
+        """The gateway now points at another conversation (qumus2/conversations.py):
+        continue that conversation's own model session with its own model choice.
+        Spend, budget and lab state are shared and stay as they are."""
+        if self.busy:
+            raise ValueError('Wait for the current turn to finish.')
+        self._busy = True  # keep the driver out during asynchronous client cleanup
+        self._done.clear()
+        try:
+            if self._client is not None:
+                await self._client.close()
+                self._client = None
+            if self._session is not None:
+                self._session.close()
+                self._session = None
+            self._apply_project_settings(self._base_creds)
+            if self._metrics is not None:
+                self._metrics.prefix_comparison.clear()
+            self._metrics = None
+            self._request_context = {}
+            self._agents.clear()
+            self._config = self._hooks = self.last_result = None
+            self._last_messages.clear()
+            self._composition_layout, self._composition_tasks = {}, {}
+            self._composition_evidence, self._composition_snapshot = [], ""
+            self._composition_filter_actions = {}
+            self._interrupted = False
+            proj = self._project()
+            self.session_id = ((proj or {}).get("state", {}).get("openai_session_id")
+                               or f"openai-{uuid4().hex}")
+            if self.gateway.project_id:
+                self.store.update_project_state(self.gateway.project_id, openai_session_id=self.session_id)
         finally:
             self._busy = False
             self._done.set()

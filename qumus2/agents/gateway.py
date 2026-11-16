@@ -79,6 +79,14 @@ class ToolGateway:
         self._open: dict[str, _Delegation] = {}  # delegation key -> what it is doing
         self._facts: dict[str, str] = {}  # key -> facts of a checked delegation, once
 
+    def switch_project(self, project_id: str) -> None:
+        """Point every later tool call at another conversation (project); nothing
+        of the previous one's delegations or shown instructions carries over."""
+        self.project_id = project_id
+        self._open.clear()
+        self._facts.clear()
+        self.inbox = Inbox(self.store)
+
     def pre(self, agent: str, tool: str, args: dict[str, Any],
             tool_use_id: str | None = None) -> Decision:
         name = short_name(tool)

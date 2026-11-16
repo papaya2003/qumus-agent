@@ -66,6 +66,8 @@ EVENT_KINDS: dict[str, str] = {
     "tool.result": "tool, tool_use_id, status, summary, data, images",
     "tool.denied": "tool, args, reason, rule",
     # plan / project
+    "conversation.switched": "from, to, name, owner, created  (qumus2/conversations.py: the first "
+                             "event of the session that continues or starts conversation `to`)",
     "plan.updated": "project_id, revision, plan, note",
     "plan.step": "project_id, revision, step_id, status, plan  (progress, same revision)",
     # jobs and closed-loop steps (written by the job service / StepRunner)

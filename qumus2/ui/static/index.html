@@ -152,6 +152,7 @@
     <section class="view" id="v-conv">
       <div class="edh">
         <h2>Conversation</h2>
+        <button class="conv-pick" id="conv-pick" type="button" hidden title="Start a new conversation or go back to an earlier one"></button>
         <div class="grow"></div>
         <button class="lnk-btn phone-show bench-link" title="The top view of the bench and the cameras">Bench ›</button>
         <span class="seg" id="feed-mode" title="Full shows everything the team did; Focus shows only the messages">
@@ -297,6 +298,7 @@
   </footer>
 </div>
 
+<dialog class="conv-dialog" id="conv-dialog" aria-label="Conversations"></dialog>
 <div class="lightbox" id="lightbox" hidden></div>
 <div class="toast" id="toast"></div>
 

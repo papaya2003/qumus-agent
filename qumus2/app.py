@@ -3,6 +3,11 @@
     services = build_services("runs/sim-lab/manual/qumus.db")      # stations.yaml, scripted agents
     services.store / .jobs / .gateway / .runtime / .driver / .lab
 
+`project_id` is the conversation in use (a project in the run store; one store
+holds many, see qumus2/conversations.py). The lab, the experience book and the
+budget are shared by every conversation; chat, model session, plan and the
+person's instructions belong to one.
+
 The brain never contains the laboratory. Every module (exfoliation, stacking,
 reactor) is a station at the address stations.yaml gives, simulated
 (qumus-simlab) or real: contract v1, or for the vdW reactor its own Lab Console
@@ -31,6 +36,9 @@ from qumus2.stations.config import Stations
 from qumus2.stations.jobs import ContractJobService, connect
 from qumus2.stations.simview import StationLab
 
+#: the name of the conversation a new run store starts with
+FIRST_CONVERSATION = "Conversation 1"
+
 
 @dataclass
 class Services:
@@ -47,6 +55,8 @@ class Services:
     # "this run" is everything after it, earlier sessions are its History
     session_start: int = 0
     simlab: Any = None  # stations.launcher.SimLabProcess when this brain started the sim lab
+    #: ui.recording.Recorder of this serve (cli), told when a conversation switch starts a session
+    recorder: Any = None
     _closed: bool = field(default=False, init=False, repr=False)
     _close_lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
 
@@ -116,8 +126,7 @@ def build_services(db_path: str | Path = ":memory:", *,
     lab = StationLab(store, view_client, simulated=st.modules[st.records_from].kind == "sim",
                      images=jobs.mirror.images)
     lab.refresh_bench()
-    projects = store.list_projects()
-    project_id = projects[0]["id"] if projects else store.create_project("demo")
+    project_id = active_conversation(store)
     consoles = console_stations(st, image_dir=image_dir)
     for module, station in consoles.items():
         jobs.extra_stops[module] = station.console.stop_all
@@ -137,9 +146,20 @@ def build_services(db_path: str | Path = ":memory:", *,
     store.emit("notification", {"level": "info", "text": f"agents: {runtime.mode} mode"})
     store.emit("stations.connected", st.to_dict())
     driver = ConversationDriver(store, runtime, jobs)
-    store.begin_session(session_start)
+    store.begin_session(session_start, project_id)
     return Services(store, store.clock, lab, jobs, gateway, runtime, driver, project_id, st,
                     session_start, simlab)
+
+
+def active_conversation(store: RunStore) -> str:
+    """The conversation (project) a new serve continues: the one in use when the
+    last serve ended, else the most recently updated one, else a new one."""
+    project_id = store.active_project_id()
+    if project_id is None:
+        projects = store.list_projects()
+        project_id = projects[0]["id"] if projects else store.create_project(FIRST_CONVERSATION)
+        store.set_active_project(project_id)
+    return project_id
 
 
 def console_stations(st: Stations, *, image_dir: str | Path | None = None) -> dict[str, Any]:

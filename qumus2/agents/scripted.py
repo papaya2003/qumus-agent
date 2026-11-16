@@ -105,6 +105,10 @@ class ScriptedRuntime:
         self._go.set()
         self.saved: dict[str, dict[str, Any]] = {}
         self.results: list[Any] = []  # (agent, tool, ToolResult) for tests
+        self._scenario_turns = list(self.turns)
+        #: conversation (project id) -> (turns left, saved results) while another one is in use
+        self._parked: dict[str | None, tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]] = {}
+        self._project_id = getattr(gateway, "project_id", None)
 
     @property
     def busy(self) -> bool:
@@ -569,6 +573,16 @@ class ScriptedRuntime:
         if save_as:
             self.saved[save_as] = {**result.data, "_status": result.status,
                                    "_summary": result.summary}
+
+    async def switch_project(self) -> None:
+        """The gateway now points at another conversation: a new one replays the
+        scenario from its first turn; an earlier one goes on where it was."""
+        if self._busy:
+            raise ValueError("Wait for the current turn to finish.")
+        self._parked[self._project_id] = (self.turns, self.saved)
+        self._project_id = self.gateway.project_id
+        self.turns, self.saved = self._parked.pop(self._project_id, None) or (list(self._scenario_turns), {})
+        self._go.set()
 
     async def interrupt(self) -> None:
         if self._busy and self._go.is_set():

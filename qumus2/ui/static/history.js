@@ -16,7 +16,7 @@
 // Playing reloads the page on the recording (?rec=<name> or ?run=<id>,
 // &at=<event index>): the replay takes the whole page, with "Back to live".
 
-import { h, api, fetchRecording, fmtDur, label, linkIds, modelLabel } from './ui.js';
+import { h, api, post, toast, fetchRecording, fmtDur, label, linkIds, modelLabel } from './ui.js';
 import { CURRENT, DEMOS, DIAGNOSTICS, order } from './demoguide.js';
 import { Session, OUTCOME } from './session.js';
 import { Results } from './results.js';
@@ -38,6 +38,31 @@ export function diagnosticPresentation(rec) {
       || (rec.events || []).some(e => ['agent.request', 'agent.request_usage', 'agent.usage', 'agent.turn_end'].includes(e.kind)
         || (e.kind === 'job.submitted' && e.payload?.flow === 'stack_device'))) return null;
   return p;
+}
+
+// An earlier run's conversation: go back to it (POST /api/conversations/{id}/switch;
+// refused with the reason while Qumus works or a job is under way).
+function continueButton(c) {
+  if (!c?.id) return null;
+  if (c.active) return h('span', { class: 'muted small hist-conv-now', text: `Conversation in use: ${c.name}` });
+  return h('button', { class: 'row-btn hist-continue', title: `Go back to the conversation "${c.name}": its chat, plan and instructions`,
+    onclick: async ev => {
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try { await post(`/api/conversations/${encodeURIComponent(c.id)}/switch`); location.reload(); }
+      catch (err) { toast(err.message); btn.disabled = false; }
+    } }, `Continue this conversation · ${c.name}`);
+}
+
+// History rows (newest first) as [{id, name, runs}], in order of each conversation's newest run.
+export function groupByConversation(runs) {
+  const groups = new Map();
+  for (const r of runs) {
+    const c = r.conversation || {}, key = c.id || '';
+    if (!groups.has(key)) groups.set(key, { id: c.id || null, name: (c.name || 'Earlier runs') + (c.owner ? ` · ${c.owner}` : ''), runs: [] });
+    groups.get(key).runs.push(r);
+  }
+  return [...groups.values()];
 }
 
 export class HistoryView {
@@ -164,9 +189,15 @@ export class HistoryView {
       : [h('div', { class: 'placeholder', text: this.recs ? 'No demonstration recording in recordings/ on this computer.' : 'Loading…' })]));
     rows.push(h('div', { class: 'sec-t', text: 'Simulated lab' }));
     if (this.ctx.current?.()) rows.push(row({ kind: 'current', id: 'live' }, 'Current run', ['Live context']));
-    for (const r of this.runs || []) {
-      rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
-        r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
+    // Grouped by conversation (qumus2/conversations.py) once there is more than one:
+    // the most recently used conversation first, its runs newest first.
+    const groups = groupByConversation(this.runs || []);
+    for (const g of groups) {
+      if (groups.length > 1) rows.push(h('div', { class: 'hist-conv', title: 'Conversation', text: g.name }));
+      for (const r of g.runs) {
+        rows.push(row({ kind: 'run', id: String(r.id) }, r.request || 'Run', [whenS(r.started), r.agents === 'sdk' ? modelLabel(r) : 'scripted',
+          r.devices && r.devices.length ? r.devices.join(', ') : null, r.lab_s >= 1 ? `${fmtDur(r.lab_s)} lab` : null], r.outcome));
+      }
     }
     if (!(this.runs || []).length && !this.ctx.current?.()) {
       rows.push(h('div', { class: 'placeholder', text: this.recs ? 'No run on this computer yet.' : 'Loading…' }));
@@ -222,7 +253,8 @@ export class HistoryView {
       diagnostic ? null : h('div', { class: 'muted small', text: facts.join(' · ') }),
       h('div', { class: 'tags' }, diagnostic ? null : h('span', { class: 'tag ' + oc, text: ot }),
         sum.lab_s >= 1 ? h('span', { class: 'tag', text: `${fmtDur(sum.lab_s)} lab time` }) : null,
-        h('span', { class: 'tag', text: 'Free playback' })));
+        h('span', { class: 'tag', text: 'Free playback' })),
+      this.sel.kind === 'run' ? continueButton(row?.conversation) : null);
     const tabs = [...(diagnostic ? [['evidence', 'Evidence']] : []), ['results', 'Results'], ['progress', 'Progress'], ['conversation', 'Conversation'], ['experience', 'Experience'], ['context', 'Context']];
     const seg = h('div', { class: 'seg small' }, ...tabs.map(([k, t]) =>
       h('button', { class: this.sub === k ? 'on' : '', text: t, onclick: () => {
@@ -263,7 +295,7 @@ export class HistoryView {
     const notice = diagnostic ? h('section', { class: 'verdict diagnostic-notice', role: 'note', style: {margin: '8px 20px', border: '2px solid #b57824', padding: '10px 12px'} },
       h('b', { text: 'Failed scripted diagnostic · Not an accepted Astra recording' }),
       h('div', { class: 'small', text: '0 stack jobs · 0 model calls · virtual origin · experimental learning disabled' })) : null;
-    body.replaceChildren(head, notice, ...(guide ? [h('p', { class: 'hist-description demo-guide', text: guide[1] })] : []), ...(!diagnostic && m.description ? [h('p', { class: 'hist-description muted small', text: m.description })] : []), bar, content);
+    body.replaceChildren(head, ...(notice ? [notice] : []), ...(guide ? [h('p', { class: 'hist-description demo-guide', text: guide[1] })] : []), ...(!diagnostic && m.description ? [h('p', { class: 'hist-description muted small', text: m.description })] : []), bar, content);
     if (this.sub === 'conversation') { pv.feed.reportControls(); pv.feed.toBottom(true); }
   }
 

@@ -39,9 +39,18 @@ UI-only endpoints (not part of the C12 contract; other workstreams don't call th
     GET  /api/image?path=<file>           an image file under the run-data directory
     GET  /api/history                     the earlier sessions (runs) in this run store, newest
                                           first: [{id, until, started, ended, agents, request,
-                                          outcome, jobs, devices, flakes, lab_s, cost_usd, ...}]
+                                          outcome, jobs, devices, flakes, lab_s, cost_usd,
+                                          conversation: {id, name, owner, active}, ...}]
     GET  /api/history/{id}/recording      that session as a recording (ui/recording.py), to
                                           play in the page; photos stay /api/image paths
+    GET  /api/conversations               every conversation (qumus2/conversations.py):
+                                          {active, conversations: [{id, name, owner, created_at,
+                                          last_active, messages, cost_usd, plan_steps, plan_done,
+                                          active}], blocked: why a switch is refused now, or null}
+    POST /api/conversations {name, owner} a new blank conversation, switched to at once
+    POST /api/conversations/{id}/switch   continue an earlier conversation; both 409 with the
+                                          reason while Qumus works or a job is under way (the
+                                          page reloads: its project and session changed)
     GET  /api/recordings, /api/recording?name=, /api/recordings/{name}/media/{file}
                                           the demo recordings under ./recordings (ui/replay.py)
     POST /api/stamps/{id}/film {by?}      a person put a new PC film on a used or torn stamp
@@ -147,6 +156,11 @@ def mount_front_end(app: FastAPI) -> None:
 class MessageIn(BaseModel):
     text: str
     kind: Literal["message", "plan_change", "veto", "stop", "continue"] = "message"
+
+
+class ConversationIn(BaseModel):
+    name: str = Field(max_length=200)
+    owner: str = Field(default="", max_length=200)
 
 
 class FaultIn(BaseModel):
@@ -514,6 +528,36 @@ def create_app(services: Services, *, start_driver: bool = True,
         except (ValueError, KeyError) as exc:
             raise HTTPException(409, str(exc)) from exc
 
+    @app.get("/api/conversations")
+    def conversations() -> dict[str, Any]:
+        from qumus2.conversations import list_conversations
+
+        return list_conversations(s)
+
+    @app.post("/api/conversations")
+    async def new_conversation(c: ConversationIn) -> dict[str, Any]:
+        from qumus2.conversations import ConversationBusy, create_conversation
+
+        try:
+            project = await create_conversation(s, c.name, c.owner)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except ConversationBusy as e:
+            raise HTTPException(409, str(e)) from None
+        return {"id": project["id"], "name": project["name"], "session_start": s.session_start}
+
+    @app.post("/api/conversations/{project_id}/switch")
+    async def choose_conversation(project_id: str) -> dict[str, Any]:
+        from qumus2.conversations import ConversationBusy, switch_conversation
+
+        try:
+            project = await switch_conversation(s, project_id)
+        except KeyError:
+            raise HTTPException(404, "no such conversation") from None
+        except ConversationBusy as e:
+            raise HTTPException(409, str(e)) from None
+        return {"id": project["id"], "name": project["name"], "session_start": s.session_start}
+
     @app.post("/api/messages")
     def message(m: MessageIn) -> dict[str, str]:
         iid = s.store.add_instruction(m.text, kind=m.kind, project_id=s.project_id)
@@ -664,7 +708,11 @@ def create_app(services: Services, *, start_driver: bool = True,
                     walls = [t["wall"] for t in tl if a < t.get("id", 0) and not t.get("start")
                              and t["id"] <= b]
                     sdk = any(e["kind"] == "agent.turn_end" for e in events)
+                    pid = s.store.session_project(a)
+                    proj = s.store.get_project(pid) if pid else None
                     row.update(id=a, until=b, agents="sdk" if sdk else "scripted",
+                               conversation={"id": pid, "name": proj["name"],
+                                             "owner": proj["state"].get("owner") or ""} if proj else None,
                                models=recorded_models(events),
                                provider=next((e["payload"]["provider"] for e in reversed(events)
                                               if e["kind"] == "agent.turn_end"
@@ -674,7 +722,11 @@ def create_app(services: Services, *, start_driver: bool = True,
                                ended=walls[-1] if walls else None)
                 past[(a, b)] = row
             if past[(a, b)] is not None:
-                rows.append(past[(a, b)])
+                row = past[(a, b)]
+                conv = row.get("conversation")
+                # `active`: this session's conversation is the one in use now (it can change)
+                rows.append({**row, "conversation": {**conv, "active": conv["id"] == s.project_id}}
+                            if conv else row)
         return rows[::-1]
 
     @app.get("/api/history/{session_id}/recording")

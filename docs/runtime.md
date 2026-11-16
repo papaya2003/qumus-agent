@@ -132,6 +132,15 @@ is stored separately in project state (`openai_session_id`) so legacy Claude
 sessions are not overwritten. Each turn refreshes the authoritative project
 summary, including existing jobs, in every agent's instructions.
 
+One run store holds several conversations (`qumus2/conversations.py`); each is
+a project with its own chat, `openai_session_id`, model choice, Task Plan and
+instructions, while the lab, experience, spend and budget ledger are shared.
+The web page's conversation button starts a blank one (name and owner) or
+continues an earlier one; the server refuses while a turn runs, a message is
+undelivered or any job is queued, running, paused or waiting for a person.
+Each switch starts a new session, so History lists earlier sessions under
+their conversation. The next `serve` continues the conversation in use.
+
 Stop cancels model work and prevents late tool execution; ConversationDriver
 then pauses jobs at their existing safe points. Continue uses the original
 job recovery logic and gives the model the resulting state. Conversation

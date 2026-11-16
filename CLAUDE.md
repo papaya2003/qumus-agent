@@ -45,6 +45,8 @@ web page (qumus2/ui) -> ConversationDriver (agents/driver.py) -> AgentRuntime
 ```
 
 - `qumus2/app.py:build_services()` wires one run: store, jobs, gateway, runtime, driver, lab view. Read it first.
+- Conversations (`qumus2/conversations.py`): one project per conversation in the same store; chat, model session,
+  plan and instructions are per conversation, lab/experience/budget shared; switching only while nothing is under way.
 - Agent team (`agents/roster.py`): `orchestrator` plus subagents `advisor`, `eyes`, `hands`, `picker`, `designer`,
   `reactor`. Names are stable identifiers used in tool permissions (`agents/policy.py`), events and the UI.
   Prompts in `agents/prompts/*.md`, skills in `agents/skills/`, per-agent models in `config/agents.yaml`.

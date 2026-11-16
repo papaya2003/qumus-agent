@@ -79,7 +79,7 @@ def _serve(args: argparse.Namespace) -> None:
 
         services.store.add_instruction(RESUME_MESSAGE, project_id=services.project_id)
     # bench state + real times next to the run store, for `qumus2 export` / replays
-    recorder = attach_recorder(services)
+    recorder = services.recorder = attach_recorder(services)
     labs = ", ".join(f"{m} {s.url} ({s.kind})" for m, s in services.stations.modules.items())
     started = f"; started qumus-simlab (log {services.simlab.log_path})" \
         if services.simlab is not None and services.simlab.process is not None else ""

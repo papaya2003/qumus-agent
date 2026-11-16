@@ -39,6 +39,7 @@ import { HistoryView } from './history.js';
 import { ExperienceView } from './experience.js';
 import { sampleDetail } from './details.js';
 import { ModelSettings } from './modelsettings.js';
+import { Conversations } from './conversations.js';
 
 // a replay eases a bench frame in at most this long (at 1x); frames that
 // come faster are coalesced, so the replay clock never waits for the bench
@@ -1340,9 +1341,18 @@ async function boot() {
   try {
     const snap = await api('/api/snapshot');
     S.projectId = snap.project?.id || null;
+    new Conversations(snap.project, { toast });
     S.sessionStart = snap.session_start ?? 0;
     S.lastId = S.sessionStart;  // this run: the events since this serve started
     run.inv.seed(snap.samples || []);  // the ledger now; the events keep it current
+    // A conversation continued from an earlier session (a switch back, or a
+    // restart) keeps its plan: show it before this session's own events.
+    const pj = snap.project;
+    if (pj?.plan?.length && pj.plan_revision > 0) {
+      apply({ id: S.sessionStart, kind: 'plan.updated', agent: 'orchestrator', ts: pj.updated_at,
+        payload: { project_id: pj.id, revision: pj.plan_revision, version: pj.plan_version, plan: pj.plan,
+          note: 'the plan so far in this conversation' } }, false);
+    }
   } catch { /* optional */ }
   await refreshBench(true);
   await loadTools();

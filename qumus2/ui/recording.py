@@ -77,22 +77,30 @@ class Recorder:
         self._last_bench = ""
         self._last_bench_t = 0.0
         self._dirty = False
+        self._lock = threading.RLock()  # the polling thread and mark_start (a conversation switch)
 
     def start(self) -> Recorder:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        start: dict[str, Any] = {"id": self.store.last_event_id(),
-                                 "wall": round(self.wall.now(), 3), "start": True}
-        if self.layout is not None:
-            start["layout"] = self.layout
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(start, default=str) + "\n")
+        self.mark_start()
+        self._thread = threading.Thread(target=self._loop, name="qumus-recorder", daemon=True)
+        self._thread.start()
+        return self
+
+    def mark_start(self) -> None:
+        """A session begins now (this serve, or a switch of conversation within
+        it): a start mark, then the bench as it is."""
+        with self._lock:
+            start: dict[str, Any] = {"id": self.store.last_event_id(),
+                                     "wall": round(self.wall.now(), 3), "start": True}
+            if self.layout is not None:
+                start["layout"] = self.layout
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(start, default=str) + "\n")
+            self._last_bench = ""  # the new session's replay starts from a full bench
         # A fast scripted job may finish before the polling thread's first
         # tick. Record the initial bench now so replay never starts in its
         # first later (possibly hot or occupied) state.
         self.tick(force_bench=True)
-        self._thread = threading.Thread(target=self._loop, name="qumus-recorder", daemon=True)
-        self._thread.start()
-        return self
 
     def stop(self) -> None:
         self._stop.set()
@@ -108,6 +116,10 @@ class Recorder:
                 continue
 
     def tick(self, force_bench: bool = False) -> None:
+        with self._lock:
+            self._tick(force_bench)
+
+    def _tick(self, force_bench: bool) -> None:
         now = round(self.wall.now(), 3)
         last = self.store.last_event_id()
         lines: list[dict[str, Any]] = []
@@ -214,11 +226,13 @@ def _experience_snapshot(store: Any) -> dict[str, Any] | None:
 def build_recording(store: Any, timeline: list[dict[str, Any]], *, after_id: int = 0,
                     before_id: int | None = None, title: str = "", description: str = "",
                     meta: dict[str, Any] | None = None, layout: dict[str, Any] | None = None,
-                    experience: dict[str, Any] | None = None) -> dict[str, Any]:
+                    experience: dict[str, Any] | None = None,
+                    project_id: str | None = None) -> dict[str, Any]:
     """The recording of the events after `after_id` (up to `before_id`), as a
     dict: meta, layout, events with their wall times, bench frames, the jobs
-    they ran, the plan history. Paths stay as the store has them (export_recording
-    copies the photos and scrubs; the live page's History plays it as is)."""
+    they ran, the plan history of its conversation (`project_id`, default: the one
+    the session after `after_id` belongs to). Paths stay as the store has them
+    (export_recording copies the photos and scrubs; the live page's History plays it as is)."""
     limit = 10_000_000 if before_id is None else max(0, before_id - after_id)
     events = [e.model_dump() for e in store.events_after(after_id, limit=limit)]
     if before_id is not None:
@@ -228,8 +242,8 @@ def build_recording(store: Any, timeline: list[dict[str, Any]], *, after_id: int
     for r in store.list_runs():
         if r["id"] in used or before_id is None:
             runs[r["id"]] = {**r, "steps": store.get_steps(r["id"])}
-    projects = store.list_projects()
-    plans = store.plan_history(projects[0]["id"]) if projects else []
+    project_id = project_id or store.session_project(after_id)
+    plans = store.plan_history(project_id) if project_id else []
     if experience is None:
         experience = _experience_snapshot(store)
 

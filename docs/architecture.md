@@ -33,7 +33,7 @@ The brain never imports laboratory code; a test (`tests/test_stations.py`) check
 | Owner | Records |
 | --- | --- |
 | Station (lab) | physical world, runs and steps of jobs, samples it creates or moves, reservations, lab events, pictures |
-| Brain | projects, plans, instructions, experience, agent events, budget |
+| Brain | projects (one per conversation: `qumus2/conversations.py`), plans, instructions, experience, agent events, budget |
 | Both | `sample`, `reservation`, project `state` that jobs read |
 
 - **lab → brain**: `GET /api/records?since=<seq>` on the `records_from` station

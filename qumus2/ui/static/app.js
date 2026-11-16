@@ -39,6 +39,7 @@ import { HistoryView } from './history.js';
 import { ExperienceView } from './experience.js';
 import { sampleDetail } from './details.js';
 import { ModelSettings } from './modelsettings.js';
+import { contextMeter } from './contextmeter.js';
 
 // a replay eases a bench frame in at most this long (at 1x); frames that
 // come faster are coalesced, so the replay clock never waits for the bench
@@ -164,6 +165,8 @@ function openResultsPart(tab) { shell.open('results'); results.openDoc(tab === '
 
 const shell = new Shell({ layout: scene => layout(scene), open: () => sceneDirty(true) });
 initPanes();
+const ctxMeter = contextMeter();
+if (ctxMeter) ctxMeter.refresh();
 const modelSettings = new ModelSettings($('model-settings'), $('billing-settings'), cfg => {
   S.model = cfg.model; S.models = [...new Set(Object.values(cfg.effective_models || {}).map(c => c.model))];
   S.modelError = null; renderMode(); renderModelStatus();
@@ -193,6 +196,7 @@ const objectiveNow = () => (lab && lab.target.microscope ? lab.target.microscope
 // to show it (ms, 0 = nothing moves).
 function apply(e, isLive) {
   const p = e.payload || {};
+  if (isLive && !REPLAY && ctxMeter) ctxMeter.event(e);
   let ms = 0;
   const had = e.kind === 'sample.updated' ? JSON.stringify(run.inv.samples.get(p.id)?.props?.images || null) : null;
   const job = run.add(e);
@@ -240,7 +244,7 @@ function apply(e, isLive) {
     case 'agent.interrupted': S.tasks = {}; S.thinking = null; break;
     case 'agent.message': if (e.agent) S.thinking = e.agent; break;
     case 'user.message':
-      if (p.kind === 'stop' || p.kind === 'continue') break;
+      if (p.kind === 'stop' || p.kind === 'continue' || p.kind === 'compact') break;
       // a replay knows who works from its events, also while a seek applies them at once
       if (isLive || REPLAY) { S.busy = true; S.sinceAt = Date.now(); }
       if (S.runStart == null) S.runStart = e.wall ?? null;

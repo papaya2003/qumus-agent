@@ -180,7 +180,74 @@ Older recordings with saved per-response tokens show those reports with unknown
 context limits and no inferred retry linkage; ambiguous old zero defaults remain
 unknown. Recordings with only characters have no token curve. Original records
 are never rewritten. Remaining capacity describes the returned report; it is
-not an exact preflight measurement or an automatic history-compaction policy.
+not an exact preflight measurement. Compaction (next section) uses the same
+reports.
+
+## Context compaction
+
+Approved by the owner on 16 November 2026 (plan "qumus-agent 上下文压缩计划",
+part 1). Code: `qumus2/agents/compaction.py` (settings, safe cut, transcript,
+summary item) and the compaction section of `OpenAIRuntime`.
+
+Only the orchestrator's conversation is compacted: specialists start from a blank
+conversation for each delegation and their reports live in the orchestrator's.
+One compaction:
+
+1. **Safe cut.** Never between a tool call and its result, never right after a
+   reasoning item. About `keep_recent_tokens` (25,000, estimated as UTF-8
+   bytes / 4) of the newest items stay word for word; a cut right before a
+   human message is preferred.
+2. **Summary.** A separate request to the orchestrator's model (same gateway,
+   pacing, budget hooks and ledger; billed to the role `compactor`, so the
+   billing page shows it). Fixed outline: goal and plan position, human requests
+   quoted verbatim with message ids, decisions, failures, what is pending,
+   identifiers. It leaves out the laboratory state, plan table and job statuses:
+   every request already carries the current laboratory record.
+3. **New session.** A new SDK session holds `[summary, *items after the cut]`.
+   The old session stays in `<run>.openai-sessions.db` unchanged; project state
+   keeps `openai_session_chain` (from, to, `context.compacted` event id, item
+   counts) and `openai_session_id` points at the new one.
+4. **Record.** `context.compacted` (agent `compactor`): trigger, whether during
+   a turn, provider-reported tokens before, estimated tokens after, threshold,
+   window, folded/kept items, the summary text, its cost and any focus text.
+   `context.session_changed` records the switch. The conversation shows a
+   "Context compacted · View summary" divider, also in History replays. Events,
+   jobs, samples, plans and instructions are never changed.
+
+**Automatic.** Before each orchestrator request, when the previous orchestrator
+request reported (provider usage, `agent.usage`) at least `window_percent` of
+the orchestrator model's context window: 50% by default, the window coming from
+`model_context_limits.yaml` or the Model settings override. A model without a
+known window uses `fallback_threshold_tokens` (150,000). This also works in the
+middle of a long turn: the cut is applied to every later request of that turn
+and the session switches when the turn ends. The cut is saved in project state
+(`openai_compaction_pending`), so after a crash the switch happens at the next
+turn. Safeguards: a failed summary request never stops the run (a warning, then
+another try after `retry_after_tokens` more); still above the point after a
+compaction, one more compaction keeps half as much, then the next automatic one
+waits for `min_growth_tokens` (50,000) of growth. Stop cancels a running
+summary request.
+
+**Manual.** The **Compact** button beside the composer (or
+`POST /api/compact {"focus": "..."}`) goes through the instruction queue like
+Stop and Continue: at once when idle, else right before the orchestrator's next
+model request. The optional focus text is added to the summary request. The
+meter beside it (`GET /api/context`) shows the last measured orchestrator input
+and the automatic point; its panel changes `auto` and `window_percent` for this
+project (`POST /api/context/settings`, saved as `compaction_settings`, 10-95%).
+Scripted (free) mode records a fixed summary without any model call, to test the
+page and the flow.
+
+**Settings.** `compaction:` in `qumus2/config/agents.yaml` (auto,
+window_percent, fallback_threshold_tokens, keep_recent_tokens,
+summary_max_tokens, min_growth_tokens, retry_after_tokens). `QUMUS_COMPACTION=off`
+switches automatic compaction off; the button still works.
+
+Cost: one summary request costs about one ordinary orchestrator request; the
+first request after it misses the provider's prompt cache. The SDK's own
+`OpenAIResponsesCompactionSession` is not used: it only compacts at the end of a
+turn, needs the Responses compaction endpoint (not Chat Completions) and its
+summary cannot be read.
 
 ## Budget and data
 

@@ -109,7 +109,8 @@ class ScriptedRuntime:
         from qumus2.config import load_yaml
 
         self._cfg = load_yaml("agents.yaml")
-        project = self.store.get_project(gateway.project_id) if gateway.project_id else None
+        project_id = getattr(gateway, "project_id", None)
+        project = self.store.get_project(project_id) if project_id else None
         self.compaction = compaction.load_settings(self._cfg, (project or {}).get("state", {}))
         self._compactions = 0
 

@@ -17,6 +17,7 @@ import re
 import time
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
@@ -863,11 +864,12 @@ class OpenAIRuntime:
         async def prepare_input(data):
             from agents.run_config import ModelInputData
 
-            if getattr(data.agent, "name", None) == ORCHESTRATOR:
+            if getattr(getattr(data, "agent", None), "name", None) == ORCHESTRATOR:
                 # Compaction first (its own request paces itself), then this request.
                 self._check_budget()
                 shown = await self._orchestrator_input(list(data.model_data.input))
-                data = replace(data, model_data=ModelInputData(
+                # only model_data is read below (transport_model_input)
+                data = SimpleNamespace(agent=data.agent, model_data=ModelInputData(
                     input=shown, instructions=data.model_data.instructions))
             await pace()
             self._composition_evidence = []

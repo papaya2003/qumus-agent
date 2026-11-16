@@ -358,7 +358,9 @@ def test_page_api_meter_settings_and_scripted_compaction(services):
 def test_page_shows_the_compaction_controls():
     static = Path(__file__).resolve().parents[1] / "qumus2" / "ui" / "static"
     html = (static / "index.html").read_text(encoding="utf-8")
-    assert 'id="ctx-meter"' in html and 'id="ctx-compact"' in html
+    assert 'id="ctx"' in html and "contextmeter.js" in (static / "app.js").read_text(encoding="utf-8")
+    meter = (static / "contextmeter.js").read_text(encoding="utf-8")
+    assert "'/api/compact'" in meter and "'/api/context/settings'" in meter
     feed = (static / "feed.js").read_text(encoding="utf-8")
     assert "'context.compacted'" in feed
     assert json.loads(json.dumps(CompactionSettings().to_dict()))["window_percent"] == 50.0

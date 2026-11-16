@@ -333,7 +333,7 @@ export class Feed {
     const p = e.payload || {};
     switch (e.kind) {
       case 'user.message': {
-        if (p.kind === 'stop' || p.kind === 'continue') break;  // shown as a divider when handled
+        if (p.kind === 'stop' || p.kind === 'continue' || p.kind === 'compact') break;  // shown as a divider when handled
         const row = this.append(this.me(e, p.text));
         if (p.instruction_id) this.bubbles.set(p.instruction_id, row);
         break;
@@ -531,6 +531,18 @@ export class Feed {
         this.append(h('div', { class: 'turnend item' + (p.is_error && p.reason !== 'interrupted' ? ' bad' : '') }, h('span', { text: bits.join(' · ') })));
         break;
       }
+      case 'context.compacted': {
+        // the older conversation became a handoff summary (agents/compaction.py)
+        const how = p.scripted ? 'scripted, fixed summary' : p.trigger === 'manual' ? 'by you' : 'automatically';
+        const size = p.tokens_before != null && p.estimated_tokens_after != null
+          ? ` · ${tokenText(p.tokens_before)} → ≈${tokenText(p.estimated_tokens_after)} tokens` : '';
+        const box = h('details', { class: 'ctx-summary' }, h('summary', { text: 'View summary' }), markdown(p.summary || ''),
+          p.focus ? h('div', { class: 'note', text: `Asked to keep: ${p.focus}` }) : null,
+          h('div', { class: 'note', text: 'The full earlier conversation stays in the run record and History.' }));
+        this.append(h('div', { class: 'divider item ctx-div' }, h('span', {}, h('b', { text: 'Context compacted' }),
+          ` · ${how}${size}${p.cost_usd ? ` · $${(+p.cost_usd).toFixed(2)} est.` : ''}`), box));
+        break;
+      }
       case 'model.changed':
         this.append(h('div', { class: 'divider item' }, h('span', { text: `Next task model: ${p.model} · fresh conversation context` })));
         break;
@@ -564,6 +576,8 @@ export class Feed {
     }
   }
 }
+
+const tokenText = n => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 
 export function offsetText(m) {
   return m && m.offset_mm != null ? `${fmt(m.offset_mm)} mm / ${fmt(m.drot_deg ?? 0, 1)}°` : null;

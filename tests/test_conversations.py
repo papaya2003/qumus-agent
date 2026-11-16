@@ -62,7 +62,7 @@ def test_new_conversation_is_blank_and_shares_the_lab(services, tmp_path):
         # the earlier session is History now, under its conversation
         hist = c.get("/api/history").json()
         assert hist and hist[0]["conversation"]["id"] == first
-        assert hist[0]["conversation"]["name"] == FIRST_CONVERSATION
+        assert hist[0]["conversation"]["name"] == FIRST_CONVERSATION and not hist[0]["conversation"]["active"]
         plans = c.get(f"/api/history/{hist[0]['id']}/recording").json()["plans"]
         assert [x["id"] for x in plans[0]["plan"]] == ["s1"]
 

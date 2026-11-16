@@ -40,7 +40,7 @@ UI-only endpoints (not part of the C12 contract; other workstreams don't call th
     GET  /api/history                     the earlier sessions (runs) in this run store, newest
                                           first: [{id, until, started, ended, agents, request,
                                           outcome, jobs, devices, flakes, lab_s, cost_usd,
-                                          conversation: {id, name, owner}, ...}]
+                                          conversation: {id, name, owner, active}, ...}]
     GET  /api/history/{id}/recording      that session as a recording (ui/recording.py), to
                                           play in the page; photos stay /api/image paths
     GET  /api/conversations               every conversation (qumus2/conversations.py):
@@ -722,7 +722,11 @@ def create_app(services: Services, *, start_driver: bool = True,
                                ended=walls[-1] if walls else None)
                 past[(a, b)] = row
             if past[(a, b)] is not None:
-                rows.append(past[(a, b)])
+                row = past[(a, b)]
+                conv = row.get("conversation")
+                # `active`: this session's conversation is the one in use now (it can change)
+                rows.append({**row, "conversation": {**conv, "active": conv["id"] == s.project_id}}
+                            if conv else row)
         return rows[::-1]
 
     @app.get("/api/history/{session_id}/recording")
